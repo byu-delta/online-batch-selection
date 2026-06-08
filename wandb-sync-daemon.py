@@ -14,7 +14,7 @@ def sync(save_dirs):
         wandb_dirs.extend(glob.glob(f"{d}/wandb/offline-run-*", recursive=True))
 
     if wandb_dirs:
-        cmd = ["wandb", "sync", *wandb_dirs]
+        cmd = ["wandb", "sync", *wandb_dirs, "--no-include-synced"]
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,

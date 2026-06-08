@@ -8,7 +8,7 @@ import re
 
 SEEDS = [1, 2, 3]
 DIAGNOSTICS = "configs/diagnostics/snapshots_log_interval.yaml"
-CONFIG_DIR = "configs/mnist"
+CONFIG_DIR = "configs/cifar3"
 
 METHODS = [
     f"{CONFIG_DIR}/method/rholoss-0.1.yaml",
@@ -23,7 +23,7 @@ MODELS = [
 ]
 
 OPTIMS = [f"{CONFIG_DIR}/optim/adamw-320-0.001-0.01.yaml"]
-DATAS = [f"{CONFIG_DIR}/data/mnist.yaml"]
+DATAS = [f"{CONFIG_DIR}/data/cifar3.yaml"]
 
 Path("logs").mkdir(exist_ok=True)
 
@@ -77,7 +77,7 @@ with open(save_dirs_file, "w") as f:
         sbatch_script = dedent(
             f"""\
             #!/bin/bash
-            #SBATCH --job-name=mnist_s{seed}
+            #SBATCH --job-name=cifar_s{seed}
             #SBATCH --output=logs/%j.out
             #SBATCH --error=logs/%j.err
             #SBATCH --gres=gpu:1
