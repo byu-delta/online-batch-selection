@@ -6,7 +6,7 @@ from methods.method_utils.ntk import NTKDiagnostics
 from methods.method_utils.param_grad import ParamGradDiagnostics
 from methods.method_utils.probe import ProbeDiagnostics
 from methods.method_utils.snapshots import SnapshotManager
-from methods.method_utils.weights import WeightDiagnostics
+from methods.method_utils.weight_matrix import WeightMatrixDiagnostics
 
 from datetime import timedelta
 
@@ -31,6 +31,7 @@ class DiagnosticsLogger:
         self.wandb_loss_acc = bool(diagnostics_config.get('wandb_loss_acc', False))
         self.wandb_normed_logits = bool(diagnostics_config.get('wandb_normed_logits', False))
         self.wandb_param_norms = bool(diagnostics_config.get('wandb_param_norms', False))
+        self.wandb_weight_matrix_norms = bool(diagnostics_config.get('wandb_weight_matrix_norms', False))
         self.wandb_grad_norms = bool(diagnostics_config.get('wandb_grad_norms', False))
         self.wandb_linear_probe = bool(diagnostics_config.get('wandb_linear_probe', False))
         self.wandb_ntk = bool(diagnostics_config.get('wandb_ntk', False))
@@ -83,10 +84,10 @@ class DiagnosticsLogger:
             teacher_model_config=teacher_model_config,
             save_spectral_decay=local_spectral_decay,
         )
-        self.weight_matrix_diagnostics = WeightDiagnostics(
+        self.weight_matrix_diagnostics = WeightMatrixDiagnostics(
             logger=self.logger,
             context=context,
-            enabled=True, # TEMP
+            enabled=self.wandb_weight_matrix_norms,
         )
         self.should_log_probe = self.probe_diagnostics.enabled
         self.should_log_ntk = self.ntk_diagnostics.enabled
@@ -178,8 +179,8 @@ class DiagnosticsLogger:
         if self.should_log_ntk:
             log_data.update(self.ntk_diagnostics.log_metrics(model, device, total_step=total_step))
         
-        # TEMP: log norms of weights
-        log_data.update()
+        if self.weight_matrix_diagnostics.enabled:
+            log_data.update(self.weight_matrix_diagnostics.log_metrics(model))
 
         self.logger.wandb_log(log_data, step=int(total_step))
 

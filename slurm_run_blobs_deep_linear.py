@@ -8,28 +8,38 @@ import re
 
 WANDB_PROJECT = "Matthew—Deep Linear Networks (Blobs)"
 
-# SEEDS = [1, 2, 3]
 SEEDS = [1]
 DIAGNOSTICS = "configs/diagnostics/snapshots_log_interval.yaml"
-CONFIG_DIR = "configs/mnist"
+CONFIG_DIR = "configs/makeblobs"
 
 METHODS = [
-    # f"{CONFIG_DIR}/method/rholoss-0.1.yaml",
-    # f"{CONFIG_DIR}/method/bayesian-0.1.yaml",
-    # f"{CONFIG_DIR}/method/divbs-0.1.yaml",
     f"{CONFIG_DIR}/method/uniform-0.1.yaml",
 ]
 
 MODELS = [
-    f"{CONFIG_DIR}/model/deep_linear_saxe/deep_linear_{i}.yaml"
-    # for i in [3, 5, 8, 36, 100]
-    for i in [3]
+    f"{CONFIG_DIR}/model/deep_linear_saxe/deep_linear_1024_3layer.yaml",
 ]
 
 OPTIMS = [f"{CONFIG_DIR}/optim/adamw-320-0.001-0.01.yaml"]
-DATAS = [f"{CONFIG_DIR}/data/mnist.yaml"]
+DATAS = [f"{CONFIG_DIR}/data/makeblobs_1024d_2class.yaml"]
 
 Path("logs").mkdir(exist_ok=True)
+
+CENTERS_NPY = "models/teacher/makeblobs_1024d_centers_seed42.npy"
+if not Path(CENTERS_NPY).exists():
+    print("Teacher model not found — generating geometry and teacher...")
+    subprocess.run(
+        [
+            "python", "data/make_blobs_teacher.py",
+            "--n_features", "1024",
+            "--center_scale", "1.0",
+            "--center_seed", "42",
+            "--alpha", "0.5",
+            "--noise_seed", "0",
+            "--out_dir", "models/teacher",
+        ],
+        check=True,
+    )
 
 save_dirs_file = (
     Path("logs")
@@ -44,16 +54,6 @@ with open(save_dirs_file, "w") as f:
         desc="Submitting jobs",
         total=len(jobs),
     ):
-        subprocess.run(
-            [
-                "python",
-                "perform_downloads.py",
-                "--method",
-                method,
-            ],
-            check=True,
-        )
-
         save_dir = subprocess.check_output(
             [
                 "python",
@@ -67,8 +67,8 @@ with open(save_dirs_file, "w") as f:
             text=True,
         ).strip()
 
-        layers = re.search(r'deep_linear_(\d+)\.yaml', model).group(1)
-        save_dir += '_' + layers +'_hidden'
+        model_id = re.search(r'deep_linear_(.+)\.yaml', model).group(1)
+        save_dir += f'_{model_id}_hidden'
 
         f.write(save_dir + "\n")
         f.flush()
@@ -76,13 +76,13 @@ with open(save_dirs_file, "w") as f:
         sbatch_script = dedent(
             f"""\
             #!/bin/bash
-            #SBATCH --job-name=cifar_s{seed}
+            #SBATCH --job-name=blobs_s{seed}
             #SBATCH --output=logs/%j.out
             #SBATCH --error=logs/%j.err
             #SBATCH --gres=gpu:1
             #SBATCH --cpus-per-task=4
-            #SBATCH --mem=32GB
-            #SBATCH --time=8:00:00
+            #SBATCH --mem=8GB
+            #SBATCH --time=0:30:00
 
             echo "save_dir: {save_dir}"
 

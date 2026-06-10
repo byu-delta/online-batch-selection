@@ -95,6 +95,19 @@ def MakeBlobs(config, logger):
     n_samples = int(dcfg.get('n_samples', 10_000))
     n_features = int(dcfg.get('n_features', 2))
     centers = dcfg.get('centers', 3)
+    centers_type = dcfg.get('centers_type', None)
+    if centers_type == 'from_file':
+        center_file = dcfg['center_file']
+        centers = np.load(center_file)  # shape (2, n_features)
+        if centers.shape != (2, n_features):
+            raise ValueError(f'center_file has shape {centers.shape}, expected (2, {n_features})')
+        num_classes = 2
+    elif centers_type is not None:
+        raise ValueError(f'Unknown centers_type: {centers_type}')
+    elif isinstance(centers, int):
+        num_classes = centers
+    else:
+        num_classes = len(centers)
     cluster_std = dcfg.get('cluster_std', 1.0)
     center_box = dcfg.get('center_box', [-10.0, 10.0])
     test_size = float(dcfg.get('test_size', 0.2))
@@ -139,11 +152,6 @@ def MakeBlobs(config, logger):
         if 'test_batch_size' not in config['training_opt']
         else config['training_opt']['test_batch_size']
     )
-
-    if isinstance(centers, int):
-        num_classes = centers
-    else:
-        num_classes = len(centers)
 
     return _makeblobs_output(
         config=config,
@@ -169,6 +177,19 @@ def MakeBlobs_Noise(config, logger):
     n_samples = int(dcfg.get('n_samples', 10_000))
     n_features = int(dcfg.get('n_features', 2))
     centers = dcfg.get('centers', 3)
+    centers_type = dcfg.get('centers_type', None)
+    if centers_type == 'from_file':
+        center_file = dcfg['center_file']
+        centers = np.load(center_file)  # shape (2, n_features)
+        if centers.shape != (2, n_features):
+            raise ValueError(f'center_file has shape {centers.shape}, expected (2, {n_features})')
+        num_classes = 2
+    elif centers_type is not None:
+        raise ValueError(f'Unknown centers_type: {centers_type}')
+    elif isinstance(centers, int):
+        num_classes = centers
+    else:
+        num_classes = len(centers)
     cluster_std = dcfg.get('cluster_std', 1.0)
     center_box = dcfg.get('center_box', [-10.0, 10.0])
     test_size = float(dcfg.get('test_size', 0.2))
@@ -213,11 +234,6 @@ def MakeBlobs_Noise(config, logger):
         if 'test_batch_size' not in config['training_opt']
         else config['training_opt']['test_batch_size']
     )
-
-    if isinstance(centers, int):
-        num_classes = centers
-    else:
-        num_classes = len(centers)
 
     return _makeblobs_output(
         config=config,
