@@ -12,20 +12,20 @@ WANDB_PROJECT = "Matthew—Deep Linear Networks"
 USE_SLURM = True
 EXP_BASE = "./exp/"  # change to e.g. "./exp-ablation/" to redirect output
 
-SEEDS = [1, 2, 3]
+SEEDS = [1]
 DIAGNOSTICS = "configs/diagnostics/snapshots_log_interval.yaml"
 CONFIG_DIR = "configs/cifar3"
 
 METHODS = [
     f"{CONFIG_DIR}/method/rholoss-0.1.yaml",
-    f"{CONFIG_DIR}/method/bayesian-0.1.yaml",
-    f"{CONFIG_DIR}/method/divbs-0.1.yaml",
-    f"{CONFIG_DIR}/method/uniform-0.1.yaml",
+    # f"{CONFIG_DIR}/method/bayesian-0.1.yaml",
+    # f"{CONFIG_DIR}/method/divbs-0.1.yaml",
+    # f"{CONFIG_DIR}/method/uniform-0.1.yaml",
 ]
 
 MODELS = [
     f"{CONFIG_DIR}/model/deep_linear_saxe/deep_linear_{i}.yaml"
-    for i in [3, 5, 8, 36, 100]
+    for i in [3]
 ]
 
 OPTIMS = [f"{CONFIG_DIR}/optim/adamw-320-0.001-0.01.yaml"]

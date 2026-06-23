@@ -9,8 +9,10 @@ if __name__ == '__main__':
     parser.add_argument('--optim', required=True)
     parser.add_argument('--seed', type=int, required=True)
     parser.add_argument('--notes', type=str,
-                        default=None, 
+                        default=None,
                         help='Notes for the experiment.')
+    parser.add_argument('--exp_base', type=str, default='./exp/',
+                        help='Base directory for experiment outputs.')
     args = parser.parse_args()
 
     method_config = get_configs(args.method)
@@ -19,7 +21,7 @@ if __name__ == '__main__':
     optim_config = get_configs(args.optim)
     config = {**method_config, **data_config, **model_config, **optim_config}
     config['seed'] = args.seed
-    
-    print(get_save_dir(config, args.notes))
+
+    print(get_save_dir(config, args.notes, exp_base=args.exp_base))
 
     

@@ -255,16 +255,7 @@ def main():
     logger.info(f'=====> Wandb initialized')
     wandb_init_kwargs = {
         'config': config,
-<<<<<<< HEAD
         'project': args.wandb_project,
-=======
-        'entity': "miller-ml-research",
-<<<<<<< HEAD
-        'project': "Noisy_Expiriments",
-=======
-        'project': "Appendix Runs",
->>>>>>> main
->>>>>>> main
         'dir': save_dir,
     }
     if resume_state is not None:
