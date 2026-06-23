@@ -16,20 +16,21 @@ import methods
 
 
 def build_artifact_stem(args, config):
-    return json.dumps(
-        dict(
-            bsel=config['method'],
-            seed=config['seed'],
-            model=config['networks']['type'],
-            opt=os.path.basename(args.optim).split('-')[0] if args.optim is not None else None,
-            bs=config['training_opt']['batch_size'],
-            ratio=config.get('method_opt', {}).get('ratio'),
-            lr=config['training_opt']['optim_params']['lr'],
-            wd=config['training_opt']['optim_params']['weight_decay'],
-            layers=config['networks']['params']['num_hidden_layers'],
-            hidden_dim=config['networks']['params']['hidden_dim']
-        )
-    ).replace(' ', '')
+    stem_dict = dict(
+        bsel=config['method'],
+        seed=config['seed'],
+        model=config['networks']['type'],
+        opt=os.path.basename(args.optim).split('-')[0] if args.optim is not None else None,
+        bs=config['training_opt']['batch_size'],
+        ratio=config.get('method_opt', {}).get('ratio'),
+        lr=config['training_opt']['optim_params']['lr'],
+        wd=config['training_opt']['optim_params']['weight_decay'],
+        layers=config['networks']['params']['num_hidden_layers'],
+        hidden_dim=config['networks']['params']['hidden_dim']
+    )
+    if args.artifact_suffix:
+        stem_dict.update(json.loads(args.artifact_suffix))
+    return json.dumps(stem_dict).replace(' ', '')
 
 
 def _normalize_path(path):
@@ -165,8 +166,12 @@ def main():
                         help='Notes for the experiment.')
     parser.add_argument('--wandb_not_upload', action='store_true', 
                         help='Do not upload the result to wandb.')
-    parser.add_argument('--wandb_project', type=str, 
+    parser.add_argument('--wandb_project', type=str,
                         default=None, help='Project name for W&B')
+    parser.add_argument('--artifact_suffix', type=str, default=None,
+                        help='JSON-encoded dict of extra fields merged into artifact_stem for snapshot/selected-points file names.')
+    parser.add_argument('--exp_base', type=str, default='./exp/',
+                        help='Base directory for experiment outputs; also used to namespace the snapshots dir.')
 
     args = parser.parse_args()
 
@@ -193,12 +198,13 @@ def main():
     
 
     if args.save_dir is None:
-        args.save_dir = get_save_dir(config, args.notes)
-    
+        args.save_dir = get_save_dir(config, args.notes, exp_base=args.exp_base)
+
 
     # method/save_dir
     save_dir = args.save_dir
     config['save_dir'] = save_dir
+    config['exp_base'] = args.exp_base
     method = config['method']
 
     if method not in methods.__all__:
