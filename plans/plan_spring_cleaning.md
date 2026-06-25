@@ -279,7 +279,7 @@ Ordered so each phase leaves the repo runnable.
 - [x] ~~`__REQUIRED__` sentinel + the three validation rules (raise on each).~~ (`generate_configs.py`)
 - [x] ~~`generate_configs` with dotted keys, Cartesian product, `<template>_<k><v>...` naming, output to `configs-temp/`, write-guard.~~ (uses full dotted path per §8; `configs/cifar3_deep_linear_template.yaml` added)
 - [x] ~~Update SLURM submission scripts to generate + consume templated configs.~~ (`slurm_run_cifar_3_deep_linear.py` reworked onto template + `--config` + `--requeue`)
-- [ ] `slurm_run_blobs_deep_linear.py`: remove the `save_labels.py` precompute stage (deleted in Phase 2) and its `afterok` label-job dependency wiring. Decide how to avoid concurrent noise-cache generation races now that labels are produced lazily at first data load (e.g. a single warm-up job, or per-`(dim,cscale,n)` serialization). **Known breakage until then:** this script references the deleted `save_labels.py`.
+- [x] ~~`slurm_run_blobs_deep_linear.py`: **deleted** (user's call) — it was a specialized ablation runner tied to the old 5-flag CLI, the deleted `save_labels.py`, old-style generated 4-file configs, and `afterok` label-dependency wiring. A templated blobs runner can be re-created later if needed.~~
 
 **Phase 5 — Diagnostics framework (§5)**
 - [ ] `TrainState`, `DiagnosticInfo`, `Diagnostic`, `DiagnosticsManager`, `DiagnosticsBuilder`.
