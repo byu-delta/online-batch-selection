@@ -276,9 +276,9 @@ Ordered so each phase leaves the repo runnable.
 - [x] ~~(slurm scripts: deferred to Phase 4, which reworks them onto templates + `--config`.)~~
 
 **Phase 4 — Config templates (§4.2)**
-- [ ] `__REQUIRED__` sentinel + the three validation rules (raise on each).
-- [ ] `generate_configs` with dotted keys, Cartesian product, `<template>_<k><v>...` naming, output to `configs-temp/`, write-guard.
-- [ ] Update SLURM submission scripts to generate + consume templated configs.
+- [x] ~~`__REQUIRED__` sentinel + the three validation rules (raise on each).~~ (`generate_configs.py`)
+- [x] ~~`generate_configs` with dotted keys, Cartesian product, `<template>_<k><v>...` naming, output to `configs-temp/`, write-guard.~~ (uses full dotted path per §8; `configs/cifar3_deep_linear_template.yaml` added)
+- [x] ~~Update SLURM submission scripts to generate + consume templated configs.~~ (`slurm_run_cifar_3_deep_linear.py` reworked onto template + `--config` + `--requeue`)
 - [ ] `slurm_run_blobs_deep_linear.py`: remove the `save_labels.py` precompute stage (deleted in Phase 2) and its `afterok` label-job dependency wiring. Decide how to avoid concurrent noise-cache generation races now that labels are produced lazily at first data load (e.g. a single warm-up job, or per-`(dim,cscale,n)` serialization). **Known breakage until then:** this script references the deleted `save_labels.py`.
 
 **Phase 5 — Diagnostics framework (§5)**

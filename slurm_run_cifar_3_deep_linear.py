@@ -1,92 +1,43 @@
-from itertools import product
+"""Submit the CIFAR3 deep-linear sweep using templated single-file configs (§4.2).
+
+Configs are generated from a template into ./configs-temp/ and each is run via
+`main.py --config <generated> --seed <s>`. Run output dirs are claimed at
+runtime under ./experiments/ (§2), so they are no longer precomputed here;
+SLURM stdout/stderr go to logs/slurm/%j.{out,err}. Jobs request --requeue so
+preemption restarts land back in the same run dir (§9.2).
+"""
+
 from pathlib import Path
 from textwrap import dedent
-from datetime import datetime
-from tqdm import tqdm
 import shlex
 import subprocess
-import re
 
-WANDB_PROJECT = "Matthew—Deep Linear Networks"
+from generate_configs import generate_configs
 
 USE_SLURM = True
-EXP_BASE = "./exp/"  # change to e.g. "./exp-ablation/" to redirect output
 
+TEMPLATE = "configs/cifar3_deep_linear_template.yaml"
 SEEDS = [1]
-DIAGNOSTICS = "configs/diagnostics/snapshots_log_interval.yaml"
-CONFIG_DIR = "configs/cifar3"
 
-METHODS = [
-    f"{CONFIG_DIR}/method/rholoss-0.1.yaml",
-    # f"{CONFIG_DIR}/method/bayesian-0.1.yaml",
-    # f"{CONFIG_DIR}/method/divbs-0.1.yaml",
-    # f"{CONFIG_DIR}/method/uniform-0.1.yaml",
-]
+# Cartesian product over these fills the template's __REQUIRED__ leaves.
+PARAMS_TO_VARY = {
+    "method": ["RhoLoss"],
+    "networks.params.num_hidden_layers": [3],
+}
 
-MODELS = [
-    f"{CONFIG_DIR}/model/deep_linear_saxe/deep_linear_{i}.yaml"
-    for i in [3]
-]
+config_paths = generate_configs(TEMPLATE, PARAMS_TO_VARY)
+Path("logs/slurm").mkdir(parents=True, exist_ok=True)
 
-OPTIMS = [f"{CONFIG_DIR}/optim/adamw-320-0.001-0.01.yaml"]
-DATAS = [f"{CONFIG_DIR}/data/cifar3.yaml"]
+for config_path in config_paths:
+    # Download the CLIP teacher on the login node before any compute job runs.
+    subprocess.run(["python", "perform_downloads.py", "--method", config_path], check=True)
 
-Path("logs").mkdir(exist_ok=True)
-
-save_dirs_file = (
-    Path("logs")
-    / f"save_dirs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-)
-
-jobs = list(product(SEEDS, DATAS, MODELS, OPTIMS, METHODS))
-
-with open(save_dirs_file, "w") as f:
-    for seed, data, model, optim, method in tqdm(
-        jobs,
-        desc="Submitting jobs" if USE_SLURM else "Running jobs",
-        total=len(jobs),
-    ):
-        subprocess.run(
-            [
-                "python",
-                "perform_downloads.py",
-                "--method",
-                method,
-            ],
-            check=True,
-        )
-
-        save_dir = subprocess.check_output(
-            [
-                "python",
-                "get_save_dir.py",
-                "--method", method,
-                "--data", data,
-                "--model", model,
-                "--optim", optim,
-                "--seed", str(seed),
-                "--exp_base", EXP_BASE,
-            ],
-            text=True,
-        ).strip()
-
-        layers = re.search(r'deep_linear_(\d+)\.yaml', model).group(1)
-        save_dir += '_' + layers +'_hidden'
-
-        f.write(save_dir + "\n")
-        f.flush()
-
+    for seed in SEEDS:
         python_cmd = [
             "python", "main.py",
-            "--method", method,
-            "--data", data,
-            "--model", model,
-            "--optim", optim,
-            "--diagnostics", DIAGNOSTICS,
+            "--config", config_path,
             "--seed", str(seed),
-            "--save_dir", save_dir,
-            "--exp_base", EXP_BASE,
-            "--wandb_project", WANDB_PROJECT,
+            "--wandb_not_upload",
         ]
 
         if USE_SLURM:
@@ -94,37 +45,19 @@ with open(save_dirs_file, "w") as f:
                 f"""\
                 #!/bin/bash
                 #SBATCH --job-name=cifar_s{seed}
-                #SBATCH --output=logs/%j.out
-                #SBATCH --error=logs/%j.err
+                #SBATCH --output=logs/slurm/%j.out
+                #SBATCH --error=logs/slurm/%j.err
                 #SBATCH --gres=gpu:1
                 #SBATCH --cpus-per-task=4
                 #SBATCH --mem=32GB
                 #SBATCH --time=8:00:00
+                #SBATCH --requeue
 
-                echo "save_dir: {save_dir}"
-
-                {shlex.join(python_cmd + ['--wandb_not_upload'])}
+                {shlex.join(python_cmd)}
                 """
             )
-            subprocess.run(
-                ["sbatch"],
-                input=sbatch_script,
-                text=True,
-                check=True,
-            )
+            subprocess.run(["sbatch"], input=sbatch_script, text=True, check=True)
         else:
             subprocess.run(python_cmd, check=True)
 
-if USE_SLURM:
-    print("All jobs submitted. Running Weights & Biases sync daemon. Ctrl+C to stop syncing")
-    subprocess.run(
-        [
-            "python",
-            "wandb-sync-daemon.py",
-            "--save_dirs",
-            str(save_dirs_file),
-        ],
-        check=True,
-    )
-else:
-    print("All jobs complete.")
+print("All jobs submitted." if USE_SLURM else "All jobs complete.")
