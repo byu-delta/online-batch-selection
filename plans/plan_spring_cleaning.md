@@ -27,10 +27,10 @@ This document is the implementation-ready spec. The two source plans remain for 
         wandb/                         # W&B run files (wandb.init(dir=...))
         logs/                          # file_log outputs from diagnostics
         snapshots/                     # checkpoints, spectral snapshots, NTK, etc.
-        labels -> ../../cache/labels/cifar3_train_seed42_labels.pt   # symlink (see §3)
+        labels -> ../../cache/labels/cifar10_noise0.2_nseed1_algo1_labels.pt   # symlink (see §3)
 ./cache/                               # shared, cross-run cache (git-ignored)
     labels/
-        cifar3_train_seed42_labels.pt
+        cifar10_noise0.2_nseed1_algo1_labels.pt
 ./configs-temp/                        # generated sweep configs (git-ignored)
 ./configs/                             # hand-written single-file configs / templates
 ```
@@ -53,15 +53,24 @@ Add `experiments/`, `cache/`, and `configs-temp/` to `.gitignore`.
 
 ## 3. Label Cache
 
-Decision: **readable names, no hash, loud on overwrite** (option A from the source notes — label inputs are all short scalars, so the filename can losslessly encode them).
+Scope (resolved): the orphaned `save_labels.py` train/val cache is **deleted**. The cache this section governs is the **noise-label cache** — the `{true_labels, noisy_labels, noisy_indices}` payload produced by `data/data_utils/generate_noise.py` for noisy datasets, which the data loaders actually consume.
+
+Decision: **readable names, no hash, loud on overwrite** (option A — every determining input is a short scalar, so the filename can losslessly encode them).
 
 - Cache lives in `./cache/labels/`, shared across runs.
-- Filename **losslessly encodes every determining input**: dataset, split, seed, and any transform that changes the labels. E.g. `cifar3_train_seed42_labels.pt`. The determining inputs are an explicit, auditable list in code (e.g. `LABEL_CACHE_KEYS`), not "whatever is in the config dict."
-- **Read path:** if the file exists → reuse it silently (this is the cache hit; it is *not* a collision). If absent → compute and write.
-- **Write path:** writing uses the §2 write-guard semantics with one twist — `save_labels.py` first checks existence; on a hit it skips the write. It must **never** silently overwrite an existing cache file. If code paths ever attempt to write *different* content to an existing name, that's a naming bug → raise loudly.
-- In each run dir, create a **symlink** `experiments/run_.../labels -> ../../cache/labels/<name>.pt` so the run is browsable as self-contained while storage stays shared and `save_labels.py` stops overwriting.
+- The cache filename **losslessly encodes every determining input** via an explicit, auditable `LABEL_CACHE_KEYS` list (not "whatever is in the config dict"):
+    - `dataset` name (e.g. `cifar10`),
+    - `noise_percent`,
+    - `noise_seed` (the resolved seed actually used to generate the noise, after the `noise_seed → run seed → 0` fallback),
+    - `noise_algo` — a small integer version tag for the derangement algorithm in `generate_noise.py`, bumped whenever that logic changes. This closes the one non-scalar determining input (the algorithm itself), which a pure-scalar name would otherwise miss.
+  - E.g. `cifar10_noise0.2_nseed1_algo1_labels.pt`.
+  - **This eliminates the current silent-wrong-reuse bug:** today the reuse check only verifies the cached *true* labels match the dataset, not that the *noisy* realization matches `noise_percent`/`noise_seed`; pointing two different-noise configs at one path silently loads the wrong noise. With inputs encoded in the name, different inputs → different files, so a mismatched realization can't be loaded.
+  - The hand-set `dataset.noisy_labels_path` config field is **removed**; the path is now a pure function of the determining inputs.
+- **Read path:** if the file exists → reuse silently (cache hit, *not* a collision). The existing content validation (cached `true_labels` must equal the current dataset's; shapes must match) is **kept** as defense-in-depth and now also catches an `algo`-tag/name mismatch as a loud error. If absent → generate and write.
+- **Write path:** §2 write-guard semantics with the cache twist — check existence first; on a hit, skip the write (never silently overwrite). Because the name encodes all inputs, an existing same-named file *is* the same inputs. If a code path ever tries to write *different* content to an existing name, that's a naming/algorithm bug → raise loudly.
+- In each run dir, create a **symlink** `experiments/run_.../labels -> ../../cache/labels/<name>.pt` so the run is browsable as self-contained while storage stays shared. The noise cache is resolved lazily at data-load time (compute-if-absent, the loader's existing behavior); the symlink is created there, since that is where the run dir (`config['save_dir']`) and the cache path are both known. Only noisy datasets create this link.
 - Caveat (documented, not blocking): symlinks don't survive `tar`/`scp` cleanly. If a run dir is ever archived off-cluster, the link dangles. Mitigation: the cache filename is fully determined by inputs recorded in `config.yaml`, so the link is reconstructible; or hardlink if same-filesystem archival is needed.
-- Future note: if a cached artifact ever has inputs that *aren't* short scalars (a transform pipeline, an index list), switch that cache to option B (readable abbreviated name + sidecar `.meta` input-hash, reuse-on-match / raise-on-mismatch). Not needed for labels.
+- Future note: if a cached artifact ever has inputs that *aren't* short scalars (a transform pipeline, an index list), switch that cache to option B (readable abbreviated name + sidecar `.meta` input-hash, reuse-on-match / raise-on-mismatch). Not needed here.
 
 ---
 
@@ -69,19 +78,26 @@ Decision: **readable names, no hash, loud on overwrite** (option A from the sour
 
 ### 4.1 Single merged config
 
-- A run is driven by **one** YAML file: the concatenation of what used to be the `method`, `data`, `model`, `optim`, and `diagnostics` configs, nested under top-level sections:
+- A run is driven by **one** YAML file: the concatenation of what used to be the `method`, `data`, `model`, `optim`, and `diagnostics` configs into one document.
+
+**Key naming (resolved).** The merged file **preserves the existing top-level keys** rather than renaming to idealized `data/model/optim/method` sections. The full rename (`dataset`→`data`, `networks`→`model`, `training_opt`→`optim`, `method`/`method_opt`→a `method` section) was measured at **~199 references across 18 files** plus a *semantic* change to the string-based method dispatch (`methods.__all__`) — a large, untestable-until-Phase-5 churn in protected research code for cosmetic gain. It is **deferred** to an optional dedicated pass after Phase 5 (when a full GPU validation is possible). So the merged document looks like:
 
 ```yaml
-data:    { ... }
-model:   { ... }
-optim:   { ... }
-method:  { ... }
-diagnostics: { ... }   # consumed by create_diagnostics.py (see §5.7)
-wandb:   { ... }       # everything wandb.init needs to set up W&B (see below)
+dataset:      { ... }   # was the data config
+networks:     { ... }   # was the model config
+training_opt: { ... }   # was the optim config
+method: Uniform         # unchanged: still a top-level string for methods.__all__ dispatch
+method_opt:   { ... }   # method params
+diagnostics:  { ... }   # consumed by create_diagnostics.py (see §5.7)
+wandb:        { ... }   # NEW — everything wandb.init needs (see below)
+resume:       { ... }   # NEW — optional, see §9.4
 ```
 
-- The `wandb:` section holds everything `wandb.init` needs — `project`, `entity` (org), and optionally `group`, `tags`, `mode` (`online`/`offline`/`disabled`), etc. At startup `main.py` calls `wandb.init(**config["wandb"], dir=run_dir/"wandb")` — the `dir=` is forced from the run dir per §6.4, not taken from config. Exact key list to be finalized during implementation.
-- `main.py` loads this one file. (The old four-`--`flag interface is replaced; see §7 for the migration of `create_diagnostics.py` to read the `diagnostics:` subtree instead of its own file.)
+- The `wandb:` section holds everything `wandb.init` needs — `project`, `entity` (org), and optionally `group`, `tags`, `mode` (`online`/`offline`/`disabled`), etc. At startup `main.py` calls `wandb.init(**config["wandb"], dir=run_dir)` — `dir=` is forced from the run dir per §6.4, not taken from config (W&B creates `run_dir/wandb/` itself). The legacy `--wandb_project`/`--wandb_not_upload` flags are folded into this section (`--wandb_not_upload` ⇒ `mode: disabled/dryrun` override).
+
+**New CLI (resolved).** The five config flags (`--method/--data/--model/--optim/--diagnostics`) are replaced by a single `--config <merged.yaml>`. Non-config flags (`--seed`, `--notes`, `--wandb_not_upload`, …) remain. `main.py` loads the one file directly (no more 5-way dict merge).
+
+**Conversion scope (resolved).** The ~270 existing four-file configs are **abandoned**, not converted. We hand-write **a couple** new merged single-file configs (one fast synthetic, e.g. makeblobs; one representative real, e.g. cifar3) to exercise the new CLI; everything else is produced by §4.2 **templates**. The old `configs/<group>/{method,data,model,optim,diagnostics}/` trees are left in place for reference but are no longer consumed by `main.py`; their eventual removal is Phase 6 cleanup. No converter is written.
 
 ### 4.2 Config templates & generation
 
@@ -248,19 +264,22 @@ Ordered so each phase leaves the repo runnable.
 - [x] ~~Resume support reconciled with the new scheme (§9).~~ (`main.py: _configure_resume_state`; restart via `slurm_history` pointer, extension via fork+copy)
 
 **Phase 2 — Label cache (§3)**
-- [ ] `LABEL_CACHE_KEYS` explicit determining-input list + readable filename builder.
-- [ ] `save_labels.py`: read-hit reuses silently; write never overwrites (raise on different content for same name).
-- [ ] Symlink the cache file into the run dir.
+- [x] ~~Delete the orphaned `save_labels.py`.~~
+- [x] ~~`LABEL_CACHE_KEYS` explicit determining-input list (`dataset`, `noise_percent`, `noise_seed`, `noise_algo`) + readable filename builder under `./cache/labels/`.~~ (`generate_noise.py: LABEL_CACHE_KEYS`, `noise_cache_path`, `NOISE_ALGO_VERSION`)
+- [x] ~~`generate_noise.py`/loaders: derive the cache path from the keys (remove `dataset.noisy_labels_path`); read-hit reuses silently (keep content validation); write never overwrites (raise on different content for same name).~~ (8 `*_noise.yaml` configs + 6 loader call sites updated)
+- [x] ~~Symlink the cache file into the run dir at data-load time (noisy datasets only).~~ (`_link_cache_into_run_dir`)
 
 **Phase 3 — Single merged config (§4.1)**
-- [ ] `main.py` loads one merged YAML with `data/model/optim/method/diagnostics` sections.
-- [ ] Convert existing four-file configs into merged single files.
-- [ ] Move resume inputs into the merged config's `resume:` section (§9.4); retire `training_opt.resume_run_path`/`resume`/`additional_epochs`.
+- [x] ~~`main.py`: replace the 5 config flags with a single `--config <merged.yaml>`; load it directly (preserve existing top-level keys — no rename). Fold `--wandb_project`/`--wandb_not_upload` into a `wandb:` section.~~
+- [x] ~~Hand-write a couple new merged single-file configs (one makeblobs, one cifar3) under `configs/`. Abandon (do not convert) the old four-file trees.~~ (`configs/makeblobs_uniform.yaml`, `configs/cifar3_rholoss.yaml`)
+- [x] ~~Move resume inputs into the merged config's `resume:` section (§9.4); retire `training_opt.resume_run_path`/`resume`/`additional_epochs`.~~ (`resume.from` / `resume.additional_epochs`)
+- [x] ~~(slurm scripts: deferred to Phase 4, which reworks them onto templates + `--config`.)~~
 
 **Phase 4 — Config templates (§4.2)**
 - [ ] `__REQUIRED__` sentinel + the three validation rules (raise on each).
 - [ ] `generate_configs` with dotted keys, Cartesian product, `<template>_<k><v>...` naming, output to `configs-temp/`, write-guard.
 - [ ] Update SLURM submission scripts to generate + consume templated configs.
+- [ ] `slurm_run_blobs_deep_linear.py`: remove the `save_labels.py` precompute stage (deleted in Phase 2) and its `afterok` label-job dependency wiring. Decide how to avoid concurrent noise-cache generation races now that labels are produced lazily at first data load (e.g. a single warm-up job, or per-`(dim,cscale,n)` serialization). **Known breakage until then:** this script references the deleted `save_labels.py`.
 
 **Phase 5 — Diagnostics framework (§5)**
 - [ ] `TrainState`, `DiagnosticInfo`, `Diagnostic`, `DiagnosticsManager`, `DiagnosticsBuilder`.

@@ -1,0 +1,65 @@
+# Merged single-file config (§4.1). Representative real run:
+# CIFAR3 + 3-layer deep-linear model + RhoLoss selection (CLIP teacher).
+
+dataset:
+  name: CIFAR3  # classes are dogs, cats, birds
+  root: ./_CIFAR
+  num_classes: 3
+  im_size: [32, 32]
+  in_channels: 3
+  input_dim: [1, 3, 32, 32]
+
+networks:
+  type: DeepLinear
+  params:
+    m_type: deeplinear
+    hidden_dim: 1000
+    num_hidden_layers: 3
+
+training_opt:
+  num_epochs: 300
+  num_data_workers: 1
+  batch_size: 320
+  test_batch_size: 512
+  optimizer: AdamW
+  optim_params:
+    lr: 0.001
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+    eps: 1.0e-08
+  scheduler_params: {}
+  scheduler: 'constant'
+  loss_type: CrossEntropy
+  loss_params: {}
+
+method: RhoLoss
+method_opt:
+  ratio: 0.1
+  balance: False
+  ratio_scheduler: constant
+  warmup_epochs: 0
+  uniform_epochs: 0
+
+teacher_model_source: clip  # Supported: "local_pretrained", "clip", "timm"
+clip:
+  clip_architecture: 'ViT-B/16'
+  tau: 4
+
+diagnostics:
+  log_interval: logarithmic
+  save_init: 5
+  save_freq: 4
+  local_snapshots: true
+  local_points_selected: true
+  local_best_model_checkpoints: false
+  wandb_loss_acc: true
+  wandb_normed_logits: true
+  wandb_param_norms: false
+  wandb_grad_norms: false
+  wandb_linear_probe: false
+  wandb_ntk: false
+  local_spectrum: false
+
+wandb:
+  project: "Matthew—Deep Linear Networks"
+  mode: offline

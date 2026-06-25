@@ -16,29 +16,13 @@ import torch.multiprocessing as mp
 import methods
 
 
-def build_artifact_stem(args, config):
-    # stem_dict = dict(
-    #     bsel=config['method'],
-    #     seed=config['seed'],
-    #     model=config['networks']['type'],
-    #     opt=os.path.basename(args.optim).split('-')[0] if args.optim is not None else None,
-    #     bs=config['training_opt']['batch_size'],
-    #     ratio=config.get('method_opt', {}).get('ratio'),
-    #     lr=config['training_opt']['optim_params']['lr'],
-    #     wd=config['training_opt']['optim_params']['weight_decay'],
-    #     layers=config['networks']['params']['num_hidden_layers'],
-    #     hidden_dim=config['networks']['params']['hidden_dim']
-    # )
-    # if args.artifact_suffix:
-    #     stem_dict.update(json.loads(args.artifact_suffix))
-    # return json.dumps(stem_dict).replace(' ', '')
-    # TODO: change this behavior
+def build_artifact_stem(config):
     return json.dumps(
         dict(
             bsel=config['method'],
             seed=config['seed'],
             model=config['networks']['type'],
-            opt=os.path.basename(args.optim).split('-')[0] if args.optim is not None else None,
+            opt=config['training_opt'].get('optimizer'),
             bs=config['training_opt']['batch_size'],
             ratio=config.get('method_opt', {}).get('ratio'),
             lr=config['training_opt']['optim_params']['lr'],
@@ -109,11 +93,11 @@ def _configure_resume_state(run_mode, run_dir, run_info, config):
     checkpoint_preview = _load_checkpoint_preview(checkpoint_path)
 
     if run_mode == 'extension':
-        additional_epochs = training_opt.get('additional_epochs')
+        additional_epochs = config.get('resume', {}).get('additional_epochs')
         if additional_epochs is not None:
             additional_epochs = int(additional_epochs)
             if additional_epochs < 1:
-                raise ValueError('training_opt.additional_epochs must be a positive integer when extending a run.')
+                raise ValueError('resume.additional_epochs must be a positive integer when extending a run.')
             training_opt['num_epochs'] = int(checkpoint_preview['epoch']) + additional_epochs
 
     training_opt['resume'] = checkpoint_path
@@ -145,35 +129,19 @@ def main():
     # ============================================================================
     # argument parser
     parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True,
+                        help='single merged config YAML (§4.1)')
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--method',  type=str,
+    parser.add_argument('--log_file', type=str,
                         default=None,
-                        help='batch selection method')
-    parser.add_argument('--data',  type=str,
-                        default=None,
-                        help='dataset name')
-    parser.add_argument('--model', type=str,
-                        default=None,
-                        help='model name')
-    parser.add_argument('--optim', type=str,
-                        default=None,
-                        help='batch size, batch seed, learning rate, optimizer, weight decay')
-    parser.add_argument('--diagnostics', type=str,
-                        default='configs/diagnostics/default.yaml',
-                        help='diagnostics config yaml')
-    parser.add_argument('--save_dir', type=str, 
-                        default=None,
-                        help='directory to save results')
-    parser.add_argument('--log_file', type=str, 
-                        default=None, 
                         help='Logger file name.')
     parser.add_argument('--notes', type=str,
-                        default=None, 
+                        default=None,
                         help='Notes for the experiment.')
-    parser.add_argument('--wandb_not_upload', action='store_true', 
+    parser.add_argument('--wandb_not_upload', action='store_true',
                         help='Do not upload the result to wandb.')
     parser.add_argument('--wandb_project', type=str,
-                        default=None, help='Project name for W&B')
+                        default=None, help='Project name for W&B (overrides wandb.project in config)')
     parser.add_argument('--artifact_suffix', type=str, default=None,
                         help='JSON-encoded dict of extra fields merged into artifact_stem for snapshot/selected-points file names.')
     parser.add_argument('--exp_base', type=str, default='./exp/',
@@ -182,23 +150,18 @@ def main():
     args = parser.parse_args()
 
     # ============================================================================
-    # load config file
-    print('=====> Loading config files: \n' + args.method + '\n' + args.data + '\n' + args.model + '\n' + args.optim + '\n' + args.diagnostics)
-    method_config = get_configs(args.method)
-    data_config = get_configs(args.data)
-    model_config = get_configs(args.model)
-    optim_config = get_configs(args.optim)
-    diagnostics_config = get_configs(args.diagnostics)
-    config = {**method_config, **data_config, **model_config, **optim_config, **diagnostics_config} # combine into single config
-    config['seed'] = args.seed # add seed to config
-    config['artifact_stem'] = build_artifact_stem(args, config)
-    print('=====> Config files loaded.')
+    # load the single merged config file (§4.1)
+    print(f'=====> Loading config: {args.config}')
+    config = get_configs(args.config)
+    config['seed'] = args.seed
+    config['artifact_stem'] = build_artifact_stem(config)
+    print('=====> Config loaded.')
 
     if args.log_file is not None:
         config['log_file'] = args.log_file
 
-    training_opt = config.setdefault('training_opt', {})
-    resume_from = training_opt.get('resume_run_path') or None
+    config.setdefault('training_opt', {})
+    resume_from = config.get('resume', {}).get('from') or None
     run_dir, run_mode, run_info = setup_run_dir(resume_from=resume_from)
 
     # method/save_dir
@@ -213,11 +176,13 @@ def main():
     resume_state = _configure_resume_state(run_mode, run_dir, run_info, config)
 
 
-    # wandb_not_upload
+    # W&B init kwargs come from the config's wandb section (§4.1); CLI flags override.
+    wandb_kwargs = dict(config.get('wandb', {}))
+    if args.wandb_project:
+        wandb_kwargs['project'] = args.wandb_project
     if args.wandb_not_upload:
         os.environ["WANDB_MODE"] = "dryrun"
-    else:
-        os.environ["WANDB_MODE"] = "run"
+        wandb_kwargs.pop('mode', None)
 
     if args.log_file is None:
         logger = custom_logger(save_dir)
@@ -232,7 +197,7 @@ def main():
     # snapshot with the updated epoch budget + lineage; restart: keep existing)
     config_path = os.path.join(save_dir, 'config.yaml')
     if run_mode == 'extension':
-        config['resume'] = {'from': run_info['parent_dir']}
+        config.setdefault('resume', {})['from'] = run_info['parent_dir']
     if run_mode != 'restart':
         logger.info('=====> Saving config file')
         if run_mode == 'fresh':
@@ -245,20 +210,17 @@ def main():
     init_seeds(args.seed)
     # logger.info(f'=====> Random seed initialized to {config["seed"]}')
     logger.info(f'=====> Wandb initialized')
-    wandb_init_kwargs = {
-        'config': config,
-        'project': args.wandb_project,
-        'dir': save_dir,
-    }
+    wandb_kwargs['config'] = config
+    wandb_kwargs['dir'] = save_dir
     if resume_state is not None:
         if resume_state['wandb_run_id'] is None:
             raise ValueError(
                 f"Unable to determine the W&B run id for resumed run at '{run_dir}'. "
                 "Expected wandb_run_id.txt, checkpoint metadata, or wandb_local_path.txt."
             )
-        wandb_init_kwargs['id'] = resume_state['wandb_run_id']
-        wandb_init_kwargs['resume'] = 'must' if run_mode == 'extension' else 'allow'
-    run = wandb.init(**wandb_init_kwargs)
+        wandb_kwargs['id'] = resume_state['wandb_run_id']
+        wandb_kwargs['resume'] = 'must' if run_mode == 'extension' else 'allow'
+    run = wandb.init(**wandb_kwargs)
     re_nest_configs(run.config)
     wandb.define_metric('acc', 'max')
     if resume_state is None:

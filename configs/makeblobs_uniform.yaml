@@ -1,0 +1,61 @@
+# Merged single-file config (§4.1). Fast synthetic smoke/example run:
+# MakeBlobs (noisy) + linear model + uniform selection.
+
+dataset:
+  name: MakeBlobs_Noise
+  noise_percent: 0.1
+  generate_new: False
+  n_samples: 1000
+  n_features: 10
+  centers: [[0, -3, -3, -3, 0, -3, -1, -2, -3, 0], [1, -1, -1, 0, 0, -1, -2, 1, 0, 0], [2, 1, 2, 2, 1, 1, 2, 1, 2, 2]]
+  cluster_std: 1.5
+  test_size: 0.2
+  standardize: True
+  num_classes: 3
+  input_dim: [1, 10]
+  include_teacher: False
+
+networks:
+  type: Linear
+  params:
+    m_type: 'linear'
+
+training_opt:
+  num_epochs: 500
+  num_data_workers: 1
+  batch_size: 320
+  test_batch_size: 512
+  optimizer: SGD
+  optim_params:
+    lr: 0.01
+    weight_decay: 0.01
+  scheduler_params: {}
+  scheduler: 'constant'
+  loss_type: CrossEntropy
+  loss_params: {}
+
+method: Uniform
+method_opt:
+  ratio: 0.1
+  balance: False
+  ratio_scheduler: constant
+  warmup_epochs: 0
+
+diagnostics:
+  log_interval: logarithmic
+  save_init: 5
+  save_freq: 4
+  local_snapshots: false
+  local_points_selected: false
+  local_best_model_checkpoints: false
+  wandb_loss_acc: true
+  wandb_normed_logits: false
+  wandb_param_norms: false
+  wandb_grad_norms: false
+  wandb_linear_probe: false
+  wandb_ntk: false
+  local_spectrum: false
+
+wandb:
+  project: "Matthew—Deep Linear Networks"
+  mode: offline
