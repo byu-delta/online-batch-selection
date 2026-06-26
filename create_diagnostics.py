@@ -10,6 +10,7 @@ from methods.diagnostics.diagnostics import (
     Checkpoint,
     EPOCH_END_DIAGNOSTICS,
     POST_BATCH_DIAGNOSTICS,
+    _LossErrorLeaf,
 )
 from methods.diagnostics.schedule import LogSchedule
 
@@ -62,14 +63,44 @@ def _build_schedule(resources, logging):
     )
 
 
-def create_diagnostics(diagnostics_config, resources):
-    """Build the per-phase diagnostics managers from the config's ``diagnostics:``
-    subtree. ``resources`` is a plain dict of static run resources (loaders,
-    save_dir, num_classes, true_labels, config, logger, …); it seeds each
-    manager's ``static_context`` and is used here to build the schedules and log
-    paths. Per-step values (model, device, …) arrive later via shared_context.
+def create_diagnostics(method, *, project_root, **other_resources):
+    """Build the per-phase diagnostics managers for ``method`` (a
+    ``SelectionMethod``). All static run resources are extracted from ``method``
+    here; ``project_root`` is the only one not derivable from the config.
+    ``other_resources`` lets subclasses inject extra static context. The
+    resources seed each manager's ``static_context`` and are used here to build
+    the schedules and log paths. Per-step values (model, device, …) arrive later
+    via shared_context.
     """
-    diagnostics_config = diagnostics_config or {}
+    config = method.config
+    diagnostics_config = config.get("diagnostics", {}) or {}
+
+    resources = {
+        'save_dir':           config['save_dir'],
+        'project_root':       project_root,
+        'artifact_stem':      config['artifact_stem'],
+        'dataset_name':       config['dataset']['name'],
+        'model_name':         config['networks']['params'].get('m_type', config['networks']['type']),
+        'seed':               config['seed'],
+        'fixed_train_loader': method.fixed_train_loader,
+        'test_loader':        method.test_loader,
+        'total_batches':      len(method.train_loader),
+        'num_train_samples':  method.num_train_samples,
+        'num_epochs':         method.epochs,
+        'num_steps':          method.num_steps,
+        'initial_best_acc':   method.best_acc,
+        'initial_best_epoch': method.best_epoch,
+        'noisy_indices':      method.data_info.get('noisy_indices'),
+        'true_labels':        method.data_info.get('true_labels'),
+        'wstar_test_acc':     method.data_info.get('wstar_test_acc'),
+        'what_test_acc':      method.data_info.get('what_test_acc'),
+        'bayes_accuracy':     config.get('bayes_accuracy'),
+        'num_classes':        method.num_classes,
+        'config':             config,
+        'logger':             method.logger,
+        **other_resources,
+    }
+
     defaults = diagnostics_config.get("logging_defaults", {})
     requested = diagnostics_config.get("diagnostics", {}) or {}
 
@@ -82,6 +113,9 @@ def create_diagnostics(diagnostics_config, resources):
     post_batch_manager.set_static_context(**resources)
     epoch_end_manager.set_static_context(**resources)
     checkpoint = None
+    # Guard against two enabled loss/acc leaves resolving to the same W&B metric
+    # name (their wandb.log calls would clobber each other at the same step).
+    seen_log_keys = {}
 
     for name, spec in requested.items():
         spec = spec or {}
@@ -101,5 +135,15 @@ def create_diagnostics(diagnostics_config, resources):
             epoch_end_manager.register(diagnostic)
         else:
             raise ValueError(f"Unknown diagnostic '{name}' in config diagnostics.diagnostics.")
+
+        if isinstance(diagnostic, _LossErrorLeaf):
+            clash = seen_log_keys.get(diagnostic.log_key)
+            if clash is not None:
+                raise ValueError(
+                    f"Diagnostics '{clash}' and '{name}' both resolve to log_key "
+                    f"'{diagnostic.log_key}'; enabled loss/acc leaves must have distinct "
+                    "log_keys (set a 'log_key' param to disambiguate)."
+                )
+            seen_log_keys[diagnostic.log_key] = name
 
     return DiagnosticsRunner(post_batch_manager, epoch_end_manager, checkpoint)

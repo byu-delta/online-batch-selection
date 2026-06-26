@@ -99,13 +99,26 @@ class PerSampleLossError(Diagnostic):
 # --------------------------------------------------------------------------- #
 
 class _LossErrorLeaf(Diagnostic):
-    """Shared base for the mean-loss / mean-acc leaves."""
-    loader_key = "train"
-    label_source = "loader"
-    metric = "loss"   # 'loss' or 'acc'
-    log_key = "train_loss"
+    """Shared base for the mean-loss / mean-acc leaves. Subclasses MUST set all
+    four class attrs below; ``log_key`` may also be overridden per-run via the
+    config's diagnostics ``params``."""
+    loader_key = None      # 'train' (fixed_train_loader) | 'val' (test_loader)
+    label_source = None    # 'loader' (loader's own labels) | 'true' (clean labels)
+    metric = None          # 'loss' (mean NLL) | 'acc' (1 - mean 0/1 error)
+    log_key = None         # W&B metric name (the info dict key) for this leaf
+
+    _REQUIRED = ("loader_key", "label_source", "metric", "log_key")
 
     def __init__(self, manager, builder, should_run=None, **params):
+        # Config may override the displayed metric name.
+        if params.get("log_key") is not None:
+            self.log_key = params["log_key"]
+        for attr in self._REQUIRED:
+            if getattr(self, attr) is None:
+                raise TypeError(
+                    f"{type(self).__name__} must set class attr '{attr}' "
+                    f"(it is still None on the abstract _LossErrorLeaf base)."
+                )
         super().__init__(manager, log_path=params.get("log_path"), should_run=should_run)
         self.dep = builder.build(PerSampleLossError, manager, builder,
                                  self.loader_key, self.label_source)

@@ -140,8 +140,6 @@ def main():
                         help='Notes for the experiment.')
     parser.add_argument('--wandb_not_upload', action='store_true',
                         help='Do not upload the result to wandb.')
-    parser.add_argument('--wandb_project', type=str,
-                        default=None, help='Project name for W&B (overrides wandb.project in config)')
     parser.add_argument('--artifact_suffix', type=str, default=None,
                         help='JSON-encoded dict of extra fields merged into artifact_stem for snapshot/selected-points file names.')
 
@@ -173,10 +171,8 @@ def main():
     resume_state = _configure_resume_state(run_mode, run_dir, run_info, config)
 
 
-    # W&B init kwargs come from the config's wandb section (§4.1); CLI flags override.
+    # W&B init kwargs come from the config's wandb section (§4.1).
     wandb_kwargs = dict(config.get('wandb', {}))
-    if args.wandb_project:
-        wandb_kwargs['project'] = args.wandb_project
     if args.wandb_not_upload:
         os.environ["WANDB_MODE"] = "dryrun"
         wandb_kwargs.pop('mode', None)
