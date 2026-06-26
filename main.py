@@ -86,7 +86,7 @@ def _configure_resume_state(run_mode, run_dir, run_info, config):
         return None
 
     training_opt = config['training_opt']
-    checkpoint_path = os.path.join(run_dir, 'checkpoint.pth.tar')
+    checkpoint_path = os.path.join(run_dir, 'snapshots', 'checkpoint.pth.tar')
     if not os.path.isfile(checkpoint_path):
         return None
 

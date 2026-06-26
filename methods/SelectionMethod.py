@@ -95,9 +95,6 @@ class SelectionMethod(object):
         # Diagnostics
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
-        diagnostics_config = {
-            **config.get('diagnostics', {}),
-        }
         diagnostics_context = DiagnosticsRunContext(
             save_dir=self.config['save_dir'],
             exp_base=self.config['exp_base'],
@@ -114,23 +111,18 @@ class SelectionMethod(object):
             num_steps=self.num_steps,
             initial_best_acc=self.best_acc,
             initial_best_epoch=self.best_epoch,
-            checkpoint_saver=self.save_checkpoint,
             noisy_indices=self.data_info.get('noisy_indices'),
             true_labels=self.data_info.get('true_labels'),
             wstar_test_acc=self.data_info.get('wstar_test_acc'),
             what_test_acc=self.data_info.get('what_test_acc'),
             bayes_accuracy=self.config.get('bayes_accuracy'),
         )
-        self.diagnostics_logger = DiagnosticsLogger(
-            logger=self.logger,
-            num_classes=self.num_classes,
-            criterion=self.criterion,
-            diagnostics_config=diagnostics_config,
-            run_config=self.config,
-            context=diagnostics_context,
-            model=self.model.module if hasattr(self.model, 'module') else self.model,
-        )
-        self.snapshots = self.diagnostics_logger.snapshots
+        from create_diagnostics import create_diagnostics
+        self.diagnostics = create_diagnostics(config.get('diagnostics', {}), diagnostics_context)
+
+        # Per-epoch selected-point mask (a side-effect tracker, read by the
+        # SelectedPoints diagnostic at epoch end; reset each epoch).
+        self._epoch_selected_mask = np.zeros(self.num_train_samples, dtype=np.int64)
 
     @staticmethod
     def _capture_rng_state():
@@ -183,8 +175,9 @@ class SelectionMethod(object):
             self.logger.info(("=> no checkpoint found at '{}'".format(resume_path)))
 
     def save_checkpoint(self, state, is_best, filename='checkpoint.pth.tar'):
-        filename = os.path.join(self.config['save_dir'],filename)
-        best_filename = os.path.join(self.config['save_dir'],'model_best.pth.tar')
+        snapshots_dir = os.path.join(self.config['save_dir'], 'snapshots')
+        filename = os.path.join(snapshots_dir, filename)
+        best_filename = os.path.join(snapshots_dir, 'model_best.pth.tar')
         torch.save(state, filename)
         self.logger.info(f'Save checkpoint to {filename}')
         if is_best:
@@ -197,7 +190,7 @@ class SelectionMethod(object):
         self.logger.info(f'Begin training for {self.method_name}...')
 
         if self.total_step == 0:
-            self.compute_diagnostics(trigger='run_start', epoch=self.start_epoch, batch_idx=-1, force=True)
+            self._run_post_batch_diagnostics(epoch=self.start_epoch, batch_idx=-1)
         else:
             self.logger.info(
                 f"=====> Resuming training at epoch {self.start_epoch + 1}, total_step {self.total_step}, "
@@ -219,33 +212,40 @@ class SelectionMethod(object):
         self.total_step = int(getattr(self, 'total_step', 0))
 
     def before_epoch(self, epoch):
-        # select samples for this epoch
+        # reset the per-epoch selected-point mask, then select samples
+        self._epoch_selected_mask.fill(0)
         return
 
     def after_epoch(self, epoch):
-        self.diagnostics_logger.log_epoch_end_selection_stats(
+        self.diagnostics.run_epoch_end(
+            total_steps=self.total_step,
             epoch=epoch,
-            total_step=self.total_step,
+            total_epochs=self.epochs,
+            selected_mask=self._epoch_selected_mask,
         )
         return
 
     def after_run(self):
-        self.diagnostics_logger.finalize()
+        self.diagnostics.finalize()
 
     def before_batch(self, i, inputs, targets, indexes, epoch) -> MinibatchInfo:
         # online batch selection
         return MinibatchInfo(inputs, targets, indexes)
 
+    def _record_selected_points(self, indexes):
+        if indexes is None:
+            return
+        idx = indexes.detach().cpu().numpy() if isinstance(indexes, torch.Tensor) else np.asarray(indexes)
+        idx = idx.reshape(-1).astype(np.int64)
+        valid = (idx >= 0) & (idx < self.num_train_samples)
+        self._epoch_selected_mask[idx[valid]] = 1
+
     def after_batch(self, i, inputs, targets, indexes, outputs, epoch):
         self.total_step += 1
         # self.ema_net.update()
 
-        self.compute_diagnostics(
-            trigger='batch_update',
-            epoch=epoch,
-            batch_idx=i,
-            indexes=indexes,
-        )
+        self._record_selected_points(indexes)
+        self._run_post_batch_diagnostics(epoch=epoch, batch_idx=i)
 
     def _build_checkpoint_state(self, epoch):
         return {
@@ -262,30 +262,24 @@ class SelectionMethod(object):
             'rng_state': self._capture_rng_state(),
         }
 
-    def compute_diagnostics(self, trigger, epoch, batch_idx, indexes=None, force=False):
+    def _run_post_batch_diagnostics(self, epoch, batch_idx):
         model = self.model.module if hasattr(self.model, 'module') else self.model
         device = next(model.parameters()).device
 
-        diagnostics_state = self.diagnostics_logger.log_diagnostics(
-            model=model,
-            trigger=trigger,
-            total_step=self.total_step,
+        self.diagnostics.run_post_batch(
+            total_steps=self.total_step,
             epoch=epoch,
             batch_idx=batch_idx,
+            total_epochs=self.epochs,
+            total_batches=len(self.train_loader),
+            model=model,
             device=device,
-            selected_indexes=indexes,
             lr=self.optimizer.param_groups[0]['lr'],
-            total_time=self.total_time,
-            time_this_epoch=self.time_this_epoch,
             checkpoint_state=self._build_checkpoint_state(epoch),
-            force=force,
         )
-        self.best_acc = diagnostics_state['best_acc']
-        self.best_epoch = diagnostics_state['best_epoch']
-        self.is_best = diagnostics_state['is_best']
-
-        if diagnostics_state.get('logged', False):
-            self.save_model(epoch)
+        self.best_acc = self.diagnostics.best_acc
+        self.best_epoch = self.diagnostics.best_epoch
+        self.is_best = self.diagnostics.is_best
 
     def train(self, epoch):
         # train for one epoch and record time taken
@@ -358,11 +352,3 @@ class SelectionMethod(object):
 
     def while_update(self, outputs, loss, targets, epoch, features, indexes, batch_idx, batch_size):
         pass
-
-    def save_model(self, epoch):
-        # save model
-        self.logger.info('=====> Saving current model and best model')
-        checkpoint = self._build_checkpoint_state(epoch)
-        self.save_checkpoint(checkpoint, self.is_best)
-    
-

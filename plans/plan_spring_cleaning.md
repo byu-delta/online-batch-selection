@@ -280,7 +280,7 @@ Presence of a leaf's key under `diagnostics.diagnostics` enables it (replacing t
 - `after_epoch`: `self.epoch_end_manager.run_diagnostics(...)`.
 - `after_run`: managers/diagnostics `finalize()` (save snapshot payload, NTK spectrum).
 
-**5.8.8 Bug fix carried in.** `snapshots.py: build_snapshot` calls `_calculate_snapshot_stats(..., true_labels=self.true_labels)` but the parameter is `override_labels=` → `TypeError` on noisy datasets with snapshots on (the crash seen in Phase-1/2 smoke testing). Fix to `override_labels=self.true_labels` as part of porting `LossAccSnapshot`.
+**5.8.8 Bug fix carried in.** `snapshots.py: build_snapshot` calls `_calculate_snapshot_stats(..., true_labels=self.true_labels)` but the parameter is `override_labels=` → `TypeError` on noisy datasets with snapshots on (the crash seen in Phase-1/2 smoke testing). **Resolved by supersession (5b):** the decomposed `PerSampleLossError(label_source='true')` replaces that code path entirely and computes true-label loss/error correctly (verified in the 5b smoke test via `TrueLabelTrainLoss`/`TrueLabelTrainAcc`). The old `snapshots.py` is now dead in the new diagnostics path (its `_calculate_snapshot_stats` is no longer invoked — and is broken in two ways: the bad kwarg *and* a 3-vs-7 return unpack), so it is left untouched for wholesale removal in Phase 6 rather than patched.
 
 **5.8.9 Config migration.** Rewrite the `diagnostics:` section of the two merged configs (`configs/makeblobs_uniform.yaml`, `configs/cifar3_rholoss.yaml`) and `configs/cifar3_deep_linear_template.yaml` from the old flat-flag format into the §5.7 class-based schema.
 
@@ -341,9 +341,9 @@ Ordered so each phase leaves the repo runnable.
 
 **Phase 5 — Diagnostics framework (§5; decomposed + staged per §5.8)**
 - [x] ~~**5a (framework):** `base.py` — `Phase`, `TrainState`, `DiagnosticInfo`, `Diagnostic` (with dependency `run()`/state cache + `__eq__`), `DiagnosticsManager`, `DiagnosticsBuilder`.~~ (`methods/diagnostics/base.py`; unit-tested: dep dedup/sharing, state cache, conditional logging)
-- [ ] **5b (first cut, GPU-testable):** compute deps `ForwardPass`/`PerSampleLossError` + leaves `TrainLoss/TrainAcc/ValLoss/ValAcc/LogitNormL2/Progress` + `Checkpoint` (rolling → `run_dir/snapshots/`, §9.2/O2) + `SelectedPoints`; `create_diagnostics.py` reading the `diagnostics:` subtree + run dir; rewire `SelectionMethod` (`post_batch_manager`/`epoch_end_manager`); fix the `override_labels` bug (§5.8.8); migrate the makeblobs config's `diagnostics:` to the class schema; **GPU smoke test**.
+- [x] ~~**5b (first cut, GPU-testable):** compute deps `ForwardPass`/`PerSampleLossError` + leaves `TrainLoss/TrainAcc/ValLoss/ValAcc/LogitNormL2/Progress` + `Checkpoint` (rolling → `run_dir/snapshots/`, §9.2/O2) + `SelectedPoints`; `create_diagnostics.py` reading the `diagnostics:` subtree + run dir; rewire `SelectionMethod` (`post_batch_manager`/`epoch_end_manager`); fix the `override_labels` bug (§5.8.8); migrate the makeblobs config's `diagnostics:` to the class schema; **GPU smoke test**.~~ (`methods/diagnostics/diagnostics.py` + `schedule.py`, `create_diagnostics.py`; `SelectionMethod` rewired to `self.diagnostics` runner; `override_labels` superseded — see §5.8.8; GPU smoke test passed: all leaves logged to W&B + per-leaf file logs in `run_dir/logs/`, checkpoint + `model_best.pth.tar` under `run_dir/snapshots/`.)
 - [ ] **5c (port the rest):** `NTK`/`LinearProbe`/`ParamGrad`/`WeightMatrix` into the decomposed form (`NTKKernel`/`PenultimateFeatures` deps + leaves); migrate cifar3 config + template `diagnostics:`.
-- [ ] Update Phase-1 resume reader + `save_checkpoint` to `run_dir/snapshots/checkpoint.pth.tar` (O2).
+- [x] ~~Update Phase-1 resume reader + `save_checkpoint` to `run_dir/snapshots/checkpoint.pth.tar` (O2).~~ (done in 5b: `main.py:_configure_resume_state` + `SelectionMethod.save_checkpoint`.)
 
 **Phase 6 — Wiring & cleanup (§6)**
 - [ ] Thread run dir into the diagnostics builder/manager; compose `log_path`/snapshot paths under it.
