@@ -1,9 +1,0 @@
-dataset:
-  name: MNIST90_Noise
-  root: ./_MNIST
-  subset_idx_path: /home/lgreen/projects/Online_BS/data/data_utils/mnist_10pct_indices.npy
-  noise_percent: 0.1
-  num_classes: 10
-  im_size: [32,32]
-  in_channels: 1
-  input_dim: [1,1,32,32]

@@ -144,8 +144,6 @@ def main():
                         default=None, help='Project name for W&B (overrides wandb.project in config)')
     parser.add_argument('--artifact_suffix', type=str, default=None,
                         help='JSON-encoded dict of extra fields merged into artifact_stem for snapshot/selected-points file names.')
-    parser.add_argument('--exp_base', type=str, default='./exp/',
-                        help='Base directory for experiment outputs; also used to namespace the snapshots dir.')
 
     args = parser.parse_args()
 
@@ -167,7 +165,6 @@ def main():
     # method/save_dir
     save_dir = run_dir
     config['save_dir'] = save_dir
-    config['exp_base'] = args.exp_base
     method = config['method']
 
     if method not in methods.__all__:

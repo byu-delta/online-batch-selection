@@ -1,8 +1,0 @@
-dataset:
-  name: CIFAR3_Noise
-  root: ./_CIFAR
-  noise_percent: 0.1
-  num_classes: 3
-  im_size: [32,32]
-  in_channels: 3
-  input_dim: [1,3,32,32]

@@ -5,7 +5,6 @@ from typing import Any
 @dataclass(frozen=True)
 class DiagnosticsRunContext:
     save_dir: str
-    exp_base: str
     project_root: str
     artifact_stem: str
     dataset_name: str

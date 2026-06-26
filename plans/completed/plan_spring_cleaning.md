@@ -348,8 +348,8 @@ Ordered so each phase leaves the repo runnable.
 - [x] ~~Update Phase-1 resume reader + `save_checkpoint` to `run_dir/snapshots/checkpoint.pth.tar` (O2).~~ (done in 5b: `main.py:_configure_resume_state` + `SelectionMethod.save_checkpoint`.)
 
 **Phase 6 — Wiring & cleanup (§6)**
-- [ ] Thread run dir into the diagnostics builder/manager; compose `log_path`/snapshot paths under it.
-- [ ] Remove the old `./exp/` path scheme and the standalone diagnostics-config plumbing.
+- [x] ~~Thread run dir into the diagnostics builder/manager; compose `log_path`/snapshot paths under it.~~ (done in 5b/5c: `create_diagnostics` composes `log_path` under `run_dir/logs/` and the checkpoint under `run_dir/snapshots/`; `main.py` sets `wandb.init(dir=run_dir)` per §6.4.)
+- [x] ~~Remove the old `./exp/` path scheme and the standalone diagnostics-config plumbing.~~ (Deleted `methods/method_utils/{diagnostics.py (DiagnosticsLogger), snapshots.py (SnapshotManager)}`, `get_save_dir.py`, `utils.get_save_dir`, the `--exp_base` flag + `config['exp_base']` + `DiagnosticsRunContext.exp_base`; `wandb-sync-daemon` default → `./experiments/**`. Removed the 199 tracked old four-file config files (`configs/<dataset>/{data,diagnostics,method,model,optim}` + top-level `configs/diagnostics/`) per §100; only the 3 merged/template configs remain. NOTE: the old `run_*.sh` scripts use the removed 5-flag CLI and are now orphaned — left in place, not in Phase-6 scope.)
 
 ### 7.3 Testing
 To test at each phase, use the command `pgpujob`, which makes a preemptible `salloc` with gpu. Run tests like those in `run_*.sh` and `slurm_run_*.py`. Make commits after each phase on the `spring_cleaning` branch. Do not make commits to any other branch, do not change any other code, do not pass go, do not collect $200. Do not yet push or interact with the git remote.
