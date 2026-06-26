@@ -1,4 +1,4 @@
-# Config template (§4.2). __REQUIRED__ leaves are filled by generate_configs.
+# Config template. __REQUIRED__ leaves are filled by generate_configs.
 
 # Run-name template: literals are plain strings; $dotted.path are config refs.
 # Rendered at runtime against each generated config's filled-in values.

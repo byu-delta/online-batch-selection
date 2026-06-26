@@ -3,10 +3,8 @@
 Every run owns one self-contained directory under ``./experiments/``. The
 directory is claimed atomically so parallel SLURM jobs cannot collide, and all
 run outputs are written through ``write_guard`` so an accidental overwrite is
-loud rather than silent. The only sanctioned overwrites are the §3 label cache
+loud rather than silent. The only sanctioned overwrites are the label cache
 and the rolling checkpoint written via ``atomic_save``.
-
-See plans/plan_spring_cleaning.md §1, §2, §9.
 """
 
 import os
@@ -144,7 +142,7 @@ def _link_slurm_logs(run_dir, job_id):
 
 def _copy_run_contents(src, dst):
     """Copy a parent run's contents into a freshly claimed dir, skipping the
-    ``labels`` symlink (re-created fresh per §3). This populates a brand-new
+    ``labels`` symlink (re-created fresh). This populates a brand-new
     directory from a trusted source, so it does not go through write_guard."""
     for name in os.listdir(src):
         if name in (LABELS_LINK_NAME, RESUMED_FROM_LINK_NAME):
@@ -171,9 +169,9 @@ def setup_run_dir(run_name, experiments_root=EXPERIMENTS_ROOT, resume_from=None)
     is one of:
 
     - ``"extension"``: a new dir forked from ``resume_from`` with the parent's
-      contents copied in (§9.3).
+      contents copied in.
     - ``"restart"``: the existing dir for this SLURM job id, reused after a
-      requeue (§9.2).
+      requeue.
     - ``"fresh"``: a brand-new run dir.
     """
     os.makedirs(experiments_root, exist_ok=True)
@@ -205,14 +203,14 @@ def setup_run_dir(run_name, experiments_root=EXPERIMENTS_ROOT, resume_from=None)
 
 def write_guard(path):
     """Raise if ``path`` already exists. Used for all (non-cache) run outputs to
-    enforce 'collisions are bugs, and bugs are loud' (§2)."""
+    enforce 'collisions are bugs, and bugs are loud'."""
     if os.path.exists(path):
         raise FileExistsError(f"Refusing to overwrite existing run output: {path}")
 
 
 def atomic_save(save_fn, path):
     """Write the rolling target via a temp file + ``os.replace`` so it advances
-    atomically and is never observed half-written (§9.2)."""
+    atomically and is never observed half-written."""
     tmp_path = f"{path}.tmp"
     save_fn(tmp_path)
     os.replace(tmp_path, path)

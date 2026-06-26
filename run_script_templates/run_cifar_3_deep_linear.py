@@ -1,10 +1,10 @@
-"""Submit the CIFAR3 deep-linear sweep using templated single-file configs (§4.2).
+"""Submit the CIFAR3 deep-linear sweep using templated single-file configs.
 
 Configs are generated from a template into ./configs-temp/ and each is run via
 `main.py --config <generated>` (seed is a swept top-level config key, not a CLI
-flag). Run output dirs are claimed at runtime under ./experiments/ (§2), so they
+flag). Run output dirs are claimed at runtime under ./experiments/, so they
 are no longer precomputed here; SLURM stdout/stderr go to logs/slurm/%j.{out,err}.
-Jobs request --requeue so preemption restarts land back in the same run dir (§9.2).
+Jobs request --requeue so preemption restarts land back in the same run dir.
 """
 
 import os

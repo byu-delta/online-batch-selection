@@ -3,7 +3,7 @@ import os
 import numpy as np
 import torch
 
-# Determining inputs for a noise-label cache file (§3). The filename losslessly
+# Determining inputs for a noise-label cache file. The filename losslessly
 # encodes each of these, so different inputs map to different files and a
 # mismatched noise realization can never be silently reused.
 LABEL_CACHE_KEYS = ('dataset', 'noise_percent', 'noise_seed', 'noise_algo')
@@ -32,7 +32,7 @@ def noise_cache_path(dataset_name, noise_percent, noise_seed, noise_algo=NOISE_A
 
 def _link_cache_into_run_dir(run_dir, labels_path):
 	"""Symlink the shared cache file into the run dir as ``labels`` so the run is
-	browsable as self-contained (§3). No-op if unset or already linked."""
+	browsable as self-contained. No-op if unset or already linked."""
 	if not run_dir:
 		return
 	link = os.path.join(run_dir, 'labels')

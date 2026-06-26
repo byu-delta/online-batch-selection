@@ -1,4 +1,4 @@
-"""Diagnostics framework (§5).
+"""Diagnostics framework.
 
 A ``Diagnostic`` computes one thing about the current training state. Diagnostics
 form a dependency DAG: a diagnostic's ``_run`` calls ``dep.run()`` on each of its

@@ -1,4 +1,4 @@
-"""Logging schedule (§5.8.5).
+"""Logging schedule.
 
 Ports the old ``DiagnosticsLogger._build_logarithmic_steps`` / ``should_log`` into
 a small object usable as a diagnostic's ``should_run(state)`` predicate. The

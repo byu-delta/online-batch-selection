@@ -1,5 +1,5 @@
-"""Concrete diagnostics (§5.8.4), decomposed into cached compute dependencies
-and small logged leaves wired by the §5.3 dependency mechanism.
+"""Concrete diagnostics, decomposed into cached compute dependencies
+and small logged leaves wired by the dependency mechanism.
 
 Layer 1 (compute deps, unregistered, never logged):
   ForwardPass(loader)        -- one model pass over a loader, shared by all metrics
@@ -194,7 +194,7 @@ class Progress(Diagnostic):
 
 
 class Checkpoint(Diagnostic):
-    """Rolling checkpoint + best-model tracking (§9.2/O2). Writes the rolling
+    """Rolling checkpoint + best-model tracking. Writes the rolling
     ``snapshots/checkpoint.pth.tar`` atomically every time it fires and copies
     ``model_best.pth.tar`` when val accuracy improves."""
 

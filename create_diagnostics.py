@@ -1,5 +1,5 @@
 """Build the diagnostics for a run from the merged config's ``diagnostics:``
-subtree (§5.6, §5.7). Returns a ``DiagnosticsRunner`` that ``SelectionMethod``
+subtree. Returns a ``DiagnosticsRunner`` that ``SelectionMethod``
 drives at run-start/after-batch/after-epoch.
 """
 

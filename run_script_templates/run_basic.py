@@ -1,10 +1,10 @@
 """Submit the basic single-dataset baseline runs.
 
-Each entry is a concrete merged config (§4.1) under ./configs/ run via
+Each entry is a concrete merged config under ./configs/ run via
 `main.py --config <config>` (the seed is a top-level key in the config). Run
-output dirs are claimed at runtime under ./experiments/ (§2); SLURM stdout/stderr
+output dirs are claimed at runtime under ./experiments/; SLURM stdout/stderr
 go to logs/slurm/%j.{out,err}. Jobs request --requeue so preemption restarts land
-back in the same run dir (§9.2). Set USE_SLURM=False to run locally instead.
+back in the same run dir. Set USE_SLURM=False to run locally instead.
 """
 
 from pathlib import Path

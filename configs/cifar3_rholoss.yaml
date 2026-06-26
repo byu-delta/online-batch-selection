@@ -1,4 +1,4 @@
-# Merged single-file config (§4.1). Representative real run:
+# Merged single-file config. Representative real run:
 # CIFAR3 + 3-layer deep-linear model + RhoLoss selection (CLIP teacher).
 
 # Run-name template: literals are plain strings; $dotted.path are config refs.

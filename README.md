@@ -2,13 +2,13 @@
 
 A research codebase for studying online batch-selection methods (RhoLoss, DivBS,
 GradNorm, …) on a range of datasets, with rich training diagnostics logged to
-Weights & Biases. It is built to run on the BYU supercomputer via SLURM.
+Weights & Biases and jobs submitted via SLURM.
 
 ---
 
 ## 1. Environment
 
-The project runs in a conda/mamba environment named **`online-bs-p100`** (CUDA
+The project runs in a conda/mamba environment named `online-bs-p100` (CUDA
 12.6, targeting P100 "pascal" GPUs). Create it once from the checked-in spec
 (takes ~20 minutes), then activate it:
 
@@ -40,7 +40,8 @@ Common flags:
 | `--log_file <name>` | auto | Override the logger filename. |
 
 > There is **no `--seed` flag** — the seed is a top-level key in the config (see
-> below). To run multiple seeds, sweep `seed` like any other parameter (§5).
+> below). To run multiple seeds, sweep `seed` like any other parameter (see
+> "Parameter sweeps" below).
 
 Select GPUs with the standard CUDA variable, e.g. `CUDA_VISIBLE_DEVICES=0` or
 `CUDA_VISIBLE_DEVICES="0,2"` (only the listed devices are visible to the run).
@@ -63,7 +64,7 @@ A config is a **single merged YAML** with these top-level pieces. Required keys
 (`run_name_format`, `seed`) raise a clear error if missing.
 
 ```yaml
-# How the run is named (see §4). Plain strings are literals; $dotted.path
+# How the run is named (see "Run naming" below). Plain strings are literals; $dotted.path
 # entries are resolved against this config (a bad path raises).
 run_name_format:
   - run
@@ -104,7 +105,7 @@ method_opt:
   ratio_scheduler: constant
   warmup_epochs: 0
 
-diagnostics:                 # what gets logged (see §6)
+diagnostics:                 # what gets logged (see "Diagnostics" below)
   logging_defaults: { log_interval: logarithmic, save_init: 5, save_freq: 4 }
   diagnostics:
     TrainLoss: {}

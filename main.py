@@ -58,7 +58,7 @@ def _resolve_wandb_run_id(resume_run_path, checkpoint_preview):
 
 
 def _configure_resume_state(run_mode, run_dir, run_info, config):
-    """Wire up resume after the run dir has been resolved (§9).
+    """Wire up resume after the run dir has been resolved.
 
     ``extension`` and ``restart`` both read their checkpoint from the (now
     local) run dir; extension reattaches the parent W&B run, restart reattaches
@@ -113,7 +113,7 @@ def main():
     # argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True,
-                        help='single merged config YAML (§4.1)')
+                        help='single merged config YAML')
     parser.add_argument('--log_file', type=str,
                         default=None,
                         help='Logger file name.')
@@ -128,7 +128,7 @@ def main():
     args = parser.parse_args()
 
     # ============================================================================
-    # load the single merged config file (§4.1)
+    # load the single merged config file
     print(f'=====> Loading config: {args.config}')
     config = get_configs(args.config)
     if 'seed' not in config:
@@ -156,7 +156,7 @@ def main():
     resume_state = _configure_resume_state(run_mode, run_dir, run_info, config)
 
 
-    # W&B init kwargs come from the config's wandb section (§4.1).
+    # W&B init kwargs come from the config's wandb section.
     wandb_kwargs = dict(config.get('wandb', {}))
     if args.wandb_not_upload:
         os.environ["WANDB_MODE"] = "dryrun"

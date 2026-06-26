@@ -1,4 +1,4 @@
-"""NTK diagnostic (§5.8.4, Phase 5c). Holds the full ``NTKDiagnostics`` compute
+"""NTK diagnostic. Holds the full ``NTKDiagnostics`` compute
 engine (moved here from the deleted ``method_utils/ntk.py``) plus the thin
 ``NTK`` leaf. The engine keeps heavy per-step state (initial kernel, initial
 eigenvectors, teacher kernel, spectrum history) and is consumed only by the NTK

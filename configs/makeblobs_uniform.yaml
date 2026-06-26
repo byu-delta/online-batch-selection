@@ -1,4 +1,4 @@
-# Merged single-file config (§4.1). Fast synthetic smoke/example run:
+# Merged single-file config. Fast synthetic smoke/example run:
 # MakeBlobs (noisy) + linear model + uniform selection.
 
 # Run-name template: literals are plain strings; $dotted.path are config refs.

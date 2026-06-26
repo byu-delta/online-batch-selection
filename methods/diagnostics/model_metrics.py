@@ -1,4 +1,4 @@
-"""Model-direct diagnostics (§5.8.4, Phase 5c): parameter/gradient norms,
+"""Model-direct diagnostics: parameter/gradient norms,
 weight-matrix norms, and the linear probe. Holds the compute engines (moved here
 from the deleted ``method_utils/{param_grad,probe,weight_matrix}.py``) plus the
 logged leaves. Each leaf builds its engine from the manager's static context at

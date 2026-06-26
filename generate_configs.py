@@ -1,11 +1,11 @@
-"""Template-driven config generation (§4.2).
+"""Template-driven config generation.
 
-A template is a single merged config (§4.1) with some leaf values set to the
+A template is a single merged config with some leaf values set to the
 sentinel ``__REQUIRED__``, marking values that must be supplied at generation
 time. ``generate_configs`` fills those leaves over the Cartesian product of the
 supplied value lists, writing one merged config per combination to
 ``./configs-temp/``. That directory is scratch/derived output and is exempt from
-the §2 write-guard: existing files are overwritten (with a warning).
+the write-guard: existing files are overwritten (with a warning).
 """
 
 import copy
@@ -51,7 +51,7 @@ def _sanitize(text):
 
 def _filename_fragment(dotted_key, value):
     # Use the full dotted path (dots -> '-') so two keys sharing a leaf name
-    # (e.g. optim.lr vs sched.lr) produce distinct fragments (§8).
+    # (e.g. optim.lr vs sched.lr) produce distinct fragments.
     return f"{_sanitize(dotted_key.replace('.', '-'))}{_sanitize(value)}"
 
 
