@@ -1,0 +1,75 @@
+# Config template. __REQUIRED__ leaves are filled by generate_configs.
+
+# Run-name template: literals are plain strings; $dotted.path are config refs.
+# Rendered at runtime against each generated config's filled-in values.
+run_name_format:
+  - run
+  - $dataset.name
+  - $method
+  - $training_opt.optimizer
+  - lr: [$training_opt.optim_params.lr]
+  - $training_opt.loss_type
+
+seed: __REQUIRED__
+
+dataset:
+  name: CIFAR3  # classes are dogs, cats, birds
+  root: ./_CIFAR
+  num_classes: 3
+  im_size: [32, 32]
+  in_channels: 3
+  input_dim: [1, 3, 32, 32]
+
+networks:
+  type: DeepLinear
+  params:
+    m_type: deeplinear
+    hidden_dim: 1000
+    num_hidden_layers: __REQUIRED__
+
+training_opt:
+  num_epochs: 300
+  num_data_workers: 1
+  batch_size: 320
+  test_batch_size: 512
+  optimizer: AdamW
+  optim_params:
+    lr: 0.001
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+    eps: 1.0e-08
+  scheduler_params: {}
+  scheduler: 'constant'
+  loss_type: CrossEntropy
+  loss_params: {}
+
+method: __REQUIRED__
+method_opt:
+  ratio: 0.1
+  balance: False
+  ratio_scheduler: constant
+  warmup_epochs: 0
+  uniform_epochs: 0
+
+teacher_model_source: clip
+clip:
+  clip_architecture: 'ViT-B/16'
+  tau: 4
+
+diagnostics:
+  logging_defaults:
+    log_interval: logarithmic
+    save_init: 5
+    save_freq: 4
+  diagnostics:
+    TrainLoss: {}
+    TrainAcc: {}
+    ValLoss: {}
+    ValAcc: {}
+    LogitNormL2: {}
+    Checkpoint: {}
+    SelectedPoints: {}
+
+wandb:
+  project: "Matthew—Deep Linear Networks"
+  mode: offline

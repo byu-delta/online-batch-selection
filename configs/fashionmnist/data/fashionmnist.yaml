@@ -1,7 +1,0 @@
-dataset:
-  name: FashionMNIST
-  root: ./_MNIST
-  num_classes: 10
-  im_size: [32,32]
-  in_channels: 1
-  input_dim: [1,1,32,32]
