@@ -261,6 +261,25 @@ class SelectedPoints(Diagnostic):
         return isinstance(other, SelectedPoints)
 
 
+class Timing(Diagnostic):
+    """Epoch-end wall-clock telemetry: cumulative training time and the time
+    spent in the most recent epoch, read from the manager's shared context
+    (populated by ``SelectionMethod.after_epoch``)."""
+
+    def __init__(self, manager, builder, should_run=None, **params):
+        super().__init__(manager, log_path=params.get("log_path"), should_run=should_run)
+
+    def _run(self):
+        ctx = self.get_context()
+        return DiagnosticInfo("timing", {
+            "total_time": float(ctx.get("total_time", 0.0)),
+            "time_this_epoch": float(ctx.get("time_this_epoch", 0.0)),
+        })
+
+    def __eq__(self, other):
+        return isinstance(other, Timing)
+
+
 from methods.diagnostics.model_metrics import GradNorms, LinearProbe, ParamNorms, WeightMatrixNorms
 from methods.diagnostics.ntk import NTK
 
@@ -283,6 +302,7 @@ POST_BATCH_DIAGNOSTICS = {
 }
 EPOCH_END_DIAGNOSTICS = {
     "SelectedPoints": SelectedPoints,
+    "Timing": Timing,
 }
 
 

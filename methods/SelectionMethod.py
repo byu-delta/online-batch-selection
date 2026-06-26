@@ -202,6 +202,8 @@ class SelectionMethod(object):
             epoch=epoch,
             total_epochs=self.epochs,
             selected_mask=self._epoch_selected_mask,
+            total_time=self.total_time,
+            time_this_epoch=self.time_this_epoch,
         )
         return
 
