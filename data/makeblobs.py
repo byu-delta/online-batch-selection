@@ -78,12 +78,21 @@ def MakeBlobs(config, logger):
     Config options (dataset.*):
     - n_samples (int): total samples (default 10000)
     - n_features (int): feature dimension (default 2)
-    - centers (int | list[list[float]]): number or coordinates of centers (default 3)
+    - centers (int | list[list[float]]): number or coordinates of centers (default 3);
+      ignored when centers_type is set
+    - centers_type ('from_file'|'random_unit_sphere'|'antipodal_unit_sphere'|None): how to produce centers
+    - center_file (str): path to .npy of shape (2, n_features); required if centers_type='from_file'
+    - center_scale (float): sphere radius for random_unit_sphere / antipodal_unit_sphere (default 1.0)
     - cluster_std (float | list[float]): std dev for each cluster (default 1.0)
-    - center_box (list[float,float]): bounds for random centers (default [-10.0, 10.0])
+    - center_box (list[float,float]): bounds for sklearn random centers (default [-10.0, 10.0]);
+      ignored when centers_type is set
     - test_size (float): fraction for test split (default 0.2)
     - standardize (bool): z-score features using train stats (default True)
     - random_state (int|None): overrides config['seed'] if set
+    - wnoised_alpha (float|None): if set and centers are a 2-class ndarray (from_file or
+      random_unit_sphere), add Gaussian noise of this magnitude to w_star to produce w_hat.
+      Noise is seeded by config['seed']. Saves wstar.npy and wnoised.npy to the run dir.
+      Populates data_info keys 'wstar_test_acc' and 'what_test_acc'.
     """
 
     try:
@@ -107,6 +116,19 @@ def MakeBlobs(config, logger):
         if centers.shape != (2, n_features):
             raise ValueError(f'center_file has shape {centers.shape}, expected (2, {n_features})')
         num_classes = 2
+    elif centers_type == 'random_unit_sphere':
+        num_classes = int(dcfg.get('num_classes', 2))
+        rng = np.random.RandomState(seed)
+        raw = rng.randn(num_classes, n_features).astype(np.float32)
+        centers = raw / np.linalg.norm(raw, axis=1, keepdims=True)
+        centers *= float(dcfg.get('center_scale', 1.0))
+    elif centers_type == 'antipodal_unit_sphere':
+        num_classes = 2
+        rng = np.random.RandomState(seed)
+        raw = rng.randn(n_features).astype(np.float32)
+        w = raw / np.linalg.norm(raw)
+        w *= float(dcfg.get('center_scale', 1.0))
+        centers = np.stack([w, -w], axis=0)
     elif centers_type is not None:
         raise ValueError(f'Unknown centers_type: {centers_type}')
     elif isinstance(centers, int):
@@ -140,20 +162,28 @@ def MakeBlobs(config, logger):
     # Evaluate w_star and w_hat classifiers on raw X_test before standardization
     # so no coordinate transformation is needed (both vectors live in raw feature space).
     wstar_test_acc = None
-    wstar_file = dcfg.get('wstar_file')
-    if wstar_file is not None:
-        w_star = np.load(wstar_file).astype(np.float32)
+    what_test_acc = None
+    if isinstance(centers, np.ndarray) and num_classes == 2:
+        w_star = (centers[0] - centers[1]).astype(np.float32)
         z = X_test @ w_star
         preds = (z <= 0).astype(np.int64)  # z>0 → near +w_star → label 0
         wstar_test_acc = float((preds == y_test).mean())
 
-    what_test_acc = None
-    wnoised_file = dcfg.get('wnoised_file')
-    if wnoised_file is not None:
-        w_hat = np.load(wnoised_file).astype(np.float32)
-        z = X_test @ w_hat
-        preds = (z <= 0).astype(np.int64)  # same sign convention as w_star
-        what_test_acc = float((preds == y_test).mean())
+        wnoised_alpha = dcfg.get('wnoised_alpha')
+        w_hat = None
+        if wnoised_alpha is not None:
+            rng = np.random.RandomState(config.get('seed', 0))
+            noise = rng.randn(n_features).astype(np.float32)
+            w_hat = w_star + float(wnoised_alpha) * noise
+            z = X_test @ w_hat
+            preds = (z <= 0).astype(np.int64)
+            what_test_acc = float((preds == y_test).mean())
+
+        if save_dir := config.get('save_dir'):
+            import os
+            np.save(os.path.join(save_dir, 'wstar.npy'), w_star)
+            if w_hat is not None:
+                np.save(os.path.join(save_dir, 'wnoised.npy'), w_hat)
 
     if standardize:
         mean = X_train.mean(axis=0, keepdims=True)
@@ -209,6 +239,19 @@ def MakeBlobs_Noise(config, logger):
         if centers.shape != (2, n_features):
             raise ValueError(f'center_file has shape {centers.shape}, expected (2, {n_features})')
         num_classes = 2
+    elif centers_type == 'random_unit_sphere':
+        num_classes = int(dcfg.get('num_classes', 2))
+        rng = np.random.RandomState(seed)
+        raw = rng.randn(num_classes, n_features).astype(np.float32)
+        centers = raw / np.linalg.norm(raw, axis=1, keepdims=True)
+        centers *= float(dcfg.get('center_scale', 1.0))
+    elif centers_type == 'antipodal_unit_sphere':
+        num_classes = 2
+        rng = np.random.RandomState(seed)
+        raw = rng.randn(n_features).astype(np.float32)
+        w = raw / np.linalg.norm(raw)
+        w *= float(dcfg.get('center_scale', 1.0))
+        centers = np.stack([w, -w], axis=0)
     elif centers_type is not None:
         raise ValueError(f'Unknown centers_type: {centers_type}')
     elif isinstance(centers, int):
@@ -239,6 +282,30 @@ def MakeBlobs_Noise(config, logger):
         stratify=y,
     )
 
+    wstar_test_acc = None
+    what_test_acc = None
+    if isinstance(centers, np.ndarray) and num_classes == 2:
+        w_star = (centers[0] - centers[1]).astype(np.float32)
+        z = X_test @ w_star
+        preds = (z <= 0).astype(np.int64)  # z>0 → near +w_star → label 0
+        wstar_test_acc = float((preds == y_test).mean())
+
+        wnoised_alpha = dcfg.get('wnoised_alpha')
+        w_hat = None
+        if wnoised_alpha is not None:
+            rng = np.random.RandomState(config.get('seed', 0))
+            noise = rng.randn(n_features).astype(np.float32)
+            w_hat = w_star + float(wnoised_alpha) * noise
+            z = X_test @ w_hat
+            preds = (z <= 0).astype(np.int64)
+            what_test_acc = float((preds == y_test).mean())
+
+        if save_dir := config.get('save_dir'):
+            import os
+            np.save(os.path.join(save_dir, 'wstar.npy'), w_star)
+            if w_hat is not None:
+                np.save(os.path.join(save_dir, 'wnoised.npy'), w_hat)
+
     if standardize:
         mean = X_train.mean(axis=0, keepdims=True)
         std = X_train.std(axis=0, keepdims=True)
@@ -267,4 +334,6 @@ def MakeBlobs_Noise(config, logger):
         test_dset=test_dset,
         num_classes=num_classes,
         include_noise=True,
+        wstar_test_acc=wstar_test_acc,
+        what_test_acc=what_test_acc,
     )

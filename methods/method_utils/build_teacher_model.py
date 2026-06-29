@@ -1,8 +1,25 @@
+import os
+
+import numpy as np
 import torch
+import torch.nn as nn
 import models
 import timm
 
 from models.BayesNet import CLIPZeroShotClassifier
+
+
+class HyperplaneClassifier(nn.Module):
+    """2-class linear classifier defined by a single weight vector w.
+    Logits are [x @ w, -x @ w] — no bias, no learned parameters."""
+
+    def __init__(self, w: np.ndarray):
+        super().__init__()
+        self.w = nn.Parameter(torch.from_numpy(w.astype(np.float32)), requires_grad=False)
+
+    def forward(self, x, **kwargs):
+        z = x.view(x.shape[0], -1) @ self.w
+        return torch.stack([z, -z], dim=1)
 
 
 def build_teacher_model(config, logger):
@@ -40,5 +57,10 @@ def build_teacher_model(config, logger):
         model = getattr(models, model_type)(**model_args)
         model.load_state_dict(torch.load(teacher_model_path, map_location='cpu'))
         return model
+
+    if teacher_model_source == 'hyperplane_vector':
+        path = teacher_model_path or os.path.join(config['save_dir'], 'wnoised.npy')
+        w = np.load(path)
+        return HyperplaneClassifier(w)
 
     raise ValueError(f'Teacher model type {teacher_model_source} not supported.')

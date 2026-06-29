@@ -300,6 +300,9 @@ class MinibatchScores(Diagnostic):
     def _run(self):
         scores = self.method._last_minibatch_scores
         if scores is None:
+            epoch = self.manager.current_state.epoch
+            if epoch > self.method.start_epoch:
+                self.method.logger.info(f"WARNING: scores were found to be None in MinibatchScores diagnostic in epoch {epoch}")
             return DiagnosticInfo(self.log_key, {})
         value = _SCORE_STATS[self.statistic](scores)
         return DiagnosticInfo(self.log_key, {self.log_key: value})

@@ -1,5 +1,5 @@
-# Merged single-file config. Fast synthetic smoke/example run:
-# MakeBlobs (noisy) + linear model + uniform selection.
+# Merged single-file config. Representative real run:
+# CIFAR3 + 3-layer deep-linear model + RhoLoss selection (CLIP teacher).
 
 # Run-name template: literals are plain strings; $dotted.path are config refs.
 run_name_format:
@@ -13,44 +13,48 @@ run_name_format:
 seed: 1
 
 dataset:
-  name: MakeBlobs_Noise
-  noise_percent: 0.1
-  generate_new: False
-  n_samples: 1000
-  n_features: 10
-  centers: [[0, -3, -3, -3, 0, -3, -1, -2, -3, 0], [1, -1, -1, 0, 0, -1, -2, 1, 0, 0], [2, 1, 2, 2, 1, 1, 2, 1, 2, 2]]
-  cluster_std: 1.5
-  test_size: 0.2
-  standardize: True
+  name: CIFAR3  # classes are dogs, cats, birds
+  root: ./_CIFAR
   num_classes: 3
-  input_dim: [1, 10]
-  include_teacher: False
+  im_size: [32, 32]
+  in_channels: 3
+  input_dim: [1, 3, 32, 32]
 
 networks:
-  type: Linear
+  type: DeepLinear
   params:
-    m_type: 'linear'
+    m_type: deeplinear
+    hidden_dim: 1000
+    num_hidden_layers: 3
 
 training_opt:
-  num_epochs: 500
+  num_epochs: 300
   num_data_workers: 1
   batch_size: 320
   test_batch_size: 512
-  optimizer: SGD
+  optimizer: AdamW
   optim_params:
-    lr: 0.01
+    lr: 0.001
     weight_decay: 0.01
+    betas: [0.9, 0.999]
+    eps: 1.0e-08
   scheduler_params: {}
   scheduler: 'constant'
   loss_type: CrossEntropy
   loss_params: {}
 
-method: Uniform
+method: RhoLoss
 method_opt:
   ratio: 0.1
   balance: False
   ratio_scheduler: constant
   warmup_epochs: 0
+  uniform_epochs: 0
+
+teacher_model_source: clip  # Supported: "local_pretrained", "clip", "timm"
+clip:
+  clip_architecture: 'ViT-B/16'
+  tau: 4
 
 diagnostics:
   logging_defaults:
@@ -58,14 +62,13 @@ diagnostics:
     save_init: 5
     save_freq: 4
   diagnostics:
-    TrainLoss: {}
-    TrainAcc: {}
-    ValLoss: {}
-    ValAcc: {}
-    TrueLabelTrainLoss: {}
-    TrueLabelTrainAcc: {}
-    Checkpoint: {}
-    SelectedPoints: {}
+    - TrainLoss: {}
+    - TrainAcc: {}
+    - ValLoss: {}
+    - ValAcc: {}
+    - LogitNormL2: {}
+    - Checkpoint: {}
+    - SelectedPoints: {}
 
 wandb:
   project: "Matthew—Deep Linear Networks"

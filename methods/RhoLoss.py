@@ -43,6 +43,10 @@ class RhoLoss(SelectionMethod):
         # starting with uniform selection generally helps performance
         self.uniform_epochs = config['method_opt']['uniform_epochs'] if 'uniform_epochs' in config['method_opt'] else 0
 
+        self.use_scores_as_distribution = config['method_opt'].get('scores_as_distribution', False)
+        if self.use_scores_as_distribution:
+            self.softmax_lambda = config['method_opt']['softmax_lambda']
+
     def setup_teacher_model(self, config, logger):
         """Retrieve the teacher model from config for computing irreducible loss."""
         teacher_config = dict(config)
@@ -131,7 +135,11 @@ class RhoLoss(SelectionMethod):
         reducible_loss = total_loss - irreducible_loss
 
         # Select samples with highest reducible loss
-        _, index_selected = torch.topk(reducible_loss, k=number_to_select, largest=True, sorted=False)
+        if self.use_scores_as_distribution:
+            weights = torch.softmax(self.softmax_lambda * reducible_loss, dim=0)
+            index_selected = torch.multinomial(weights, number_to_select)
+        else: # Normal RhoLoss
+            _, index_selected = torch.topk(reducible_loss, k=number_to_select, largest=True, sorted=False)
         
         # Override with uniform selection if specified
         if epoch < self.uniform_epochs:

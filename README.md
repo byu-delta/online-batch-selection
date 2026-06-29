@@ -27,7 +27,7 @@ repository root.
 `main.py` takes **one merged YAML config** via `--config`:
 
 ```bash
-python main.py --config config_templates/cifar3_rholoss.yaml
+python main.py --config template_configs/cifar3_rholoss.yaml
 ```
 
 Common flags:
@@ -53,7 +53,7 @@ To run interactively on a P100 node:
 ```bash
 salloc -C pascal --time=1:00:00 --ntasks=1 --nodes=1 --gpus=1 --mem=8000M
 mamba activate online-bs-p100
-python main.py --config config_templates/makeblobs_basic.yaml --wandb_not_upload
+python main.py --config template_configs/makeblobs_basic.yaml --wandb_not_upload
 ```
 
 ---
@@ -107,20 +107,20 @@ method_opt:
 
 diagnostics:                 # what gets logged (see "Diagnostics" below)
   logging_defaults: { log_interval: logarithmic, save_init: 5, save_freq: 4 }
-  diagnostics:
-    TrainLoss: {}
-    TrainAcc: {}
-    ValLoss: {}
-    ValAcc: {}
-    Timing: {}
-    Checkpoint: {}
+  diagnostics:               # list; bare name or {Name: params} are both fine
+    - TrainLoss
+    - TrainAcc
+    - ValLoss
+    - ValAcc
+    - Timing
+    - Checkpoint
 
 wandb:                       # passed to wandb.init(); --wandb_not_upload overrides mode
   project: "My Project"
   mode: online               # online | offline | disabled
 ```
 
-Ready-to-run example configs live in `config_templates/` (e.g. `cifar3_rholoss.yaml`,
+Ready-to-run example configs live in `template_configs/` (e.g. `cifar3_rholoss.yaml`,
 `makeblobs_basic.yaml`, `mnist_basic.yaml`, `cifar10_basic.yaml`,
 `teacher_generated_basic.yaml`).
 
@@ -157,7 +157,7 @@ Sweeps use a **template config** plus `generate_configs.py`. A template is a
 normal merged config with some leaves set to the sentinel `__REQUIRED__`:
 
 ```yaml
-# config_templates/cifar3_deep_linear_template.yaml (excerpt)
+# template_configs/cifar3_deep_linear_template.yaml (excerpt)
 seed: __REQUIRED__
 method: __REQUIRED__
 training_opt:
@@ -178,7 +178,7 @@ PARAMS_TO_VARY = {
     "method": ["RhoLoss"],
     "networks.params.num_hidden_layers": [3],
 }
-config_paths = generate_configs("config_templates/cifar3_deep_linear_template.yaml", PARAMS_TO_VARY)
+config_paths = generate_configs("template_configs/cifar3_deep_linear_template.yaml", PARAMS_TO_VARY)
 ```
 
 Rules: every key in `PARAMS_TO_VARY` must be `__REQUIRED__` in the template, and
@@ -190,8 +190,10 @@ raises). Generated filenames encode the varied values, e.g.
 
 ## 6. Diagnostics
 
-The `diagnostics.diagnostics` block is a set of **leaves** to log. Each is keyed
-by class name with optional `params`. Available leaves include:
+The `diagnostics.diagnostics` block is a **list** of leaves to log. Each entry
+is either a bare class name (`- TrainLoss`) or a single-key dict with params
+(`- MinibatchScores: {statistic: mean}`). Using a list allows the same class to
+appear multiple times with different params. Available leaves include:
 
 - **Snapshots:** `TrainLoss`, `TrainAcc`, `ValLoss`, `ValAcc`
   (and `TrueLabelTrainLoss`/`TrueLabelTrainAcc` for clean-label metrics on noisy data)
@@ -202,26 +204,27 @@ by class name with optional `params`. Available leaves include:
 - **`Checkpoint`** — rolling + best checkpoint (needed to resume / track best acc)
 - **`SelectedPoints`** — noisy-selection stats (epoch end)
 
-A metric's displayed name can be overridden, e.g. on a noisy dataset:
+A metric's W&B key can be overridden, e.g. on a noisy dataset:
 
 ```yaml
-TrainLoss: { params: { log_key: noisy_train_loss } }
+- TrainLoss:
+    log_key: noisy_train_loss
 ```
 
 ---
 
 ## 7. Submitting batch jobs to SLURM
 
-Tracked example submission scripts live in **`run_script_templates/`**; they
+Tracked example submission scripts live in **`template_run/`**; they
 generate/select configs and submit one `sbatch` job each. Run them **from the
 repo root** with the environment active:
 
 ```bash
-python run_script_templates/run_basic.py                # basic single-dataset baselines
-python run_script_templates/run_cifar_3_deep_linear.py  # templated CIFAR3 sweep
+python template_run/run_basic.py                # basic single-dataset baselines
+python template_run/run_cifar_3_deep_linear.py  # templated CIFAR3 sweep
 ```
 
-For your own ad-hoc/WIP sweeps, copy one into **`run_scripts/`** — that folder is
+For your own ad-hoc/WIP sweeps, copy one into **`run/`** — that folder is
 tracked but its contents are git-ignored, so personal scripts stay local.
 
 Each submitted job requests a GPU and `--requeue`, so a preempted job lands back
@@ -247,11 +250,11 @@ run directory (optionally with `resume.additional_epochs`).
   `data/__init__.py` (CIFAR3/10/100, MNIST/FashionMNIST, TinyImageNet, MakeBlobs,
   Teacher_Generated, and `*_Noise` variants).
 - **`models/`** — model definitions (ResNet, LeNet, Linear, DeepLinear, TwoLayer).
-- **`config_templates/`** — tracked ready-to-run configs and sweep templates; **`configs/`** — local/WIP configs (contents git-ignored).
+- **`template_configs/`** — tracked ready-to-run configs and sweep templates; **`configs/`** — local/WIP configs (contents git-ignored).
 - **`run_dir.py`** — run-name rendering, atomic run-dir creation, resume plumbing.
 - **`generate_configs.py`** — template → concrete configs for sweeps.
-- **`run_script_templates/`** — tracked example SLURM submission scripts;
-  **`run_scripts/`** — your local/WIP submission scripts (contents git-ignored).
+- **`template_run/`** — tracked example SLURM submission scripts;
+  **`run/`** — your local/WIP submission scripts (contents git-ignored).
 - **`experiments/`** — run outputs (git-ignored).
 
 ---

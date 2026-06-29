@@ -21,6 +21,13 @@ class Phase(Enum):
     change between them) don't collide."""
     POST_BATCH = "post_batch"
     EPOCH_END = "epoch_end"
+    TRAIN_END = "train_end"
+
+
+class LogType(Enum):
+    """How a diagnostic's payload is routed to W&B."""
+    RUN = "run"        # wandb.log(payload, step=...)
+    SUMMARY = "summary"  # wandb.run.summary.update(payload)
 
 
 @dataclass(frozen=True)
@@ -45,6 +52,7 @@ class DiagnosticInfo:
     name: str
     info: Any
     metadata: Optional[dict] = None
+    log_type: LogType = LogType.RUN
 
 
 class Diagnostic:
@@ -104,7 +112,10 @@ class Diagnostic:
     def wandb_log(self, infos: List[DiagnosticInfo]):
         import wandb
         payload = self._log_payload()
-        wandb.log(payload, step=int(self.last_run_state.total_steps))
+        if self.last_run_diagnostic.log_type == LogType.SUMMARY:
+            wandb.run.summary.update(payload)
+        else:
+            wandb.log(payload, step=int(self.last_run_state.total_steps))
 
     def file_log(self, infos: List[DiagnosticInfo]):
         if self.log_path is None:

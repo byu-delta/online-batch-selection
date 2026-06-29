@@ -11,6 +11,7 @@ from methods.diagnostics.standard import (
 )
 from methods.diagnostics.model_metrics import GradNorms, LinearProbe, ParamNorms, WeightMatrixNorms
 from methods.diagnostics.ntk import NTK
+from methods.diagnostics.specialty import WStarTestAcc, WHatTestAcc, BayesAccAntipodalGaussian
 
 POST_BATCH_DIAGNOSTICS = {
     "TrainLoss": TrainLoss,
@@ -32,4 +33,9 @@ POST_BATCH_DIAGNOSTICS = {
 EPOCH_END_DIAGNOSTICS = {
     "SelectedPoints": SelectedPoints,
     "Timing": Timing,
+}
+TRAIN_END_DIAGNOSTICS = {
+    "WStarTestAcc": WStarTestAcc,
+    "WHatTestAcc": WHatTestAcc,
+    "BayesAccAntipodalGaussian": BayesAccAntipodalGaussian,
 }
