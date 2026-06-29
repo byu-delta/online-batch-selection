@@ -11,21 +11,17 @@ _CIFAR/
 _MNIST/
 _TINYIMAGENET/
 logs/
+models/teacher/*.p
+models/teacher/*.pt
+models/teacher/*.pth
 
 # _TINYIMAGENET/
 _CIFAR_N/
 
-# bash scripts
-run.sh
-
-# exp
-exp/
-exp_before0804/
-
-# spring-cleaning output tree (§1)
+# outputs
 experiments/
 cache/
-configs-temp/
+.configs-temp/
 
 # wandb
 wandb/
@@ -33,7 +29,6 @@ wandb/
 # vscode
 .vscode/
 
-configs/makeblobs/generated/
 results/
 runs/
 selected_points/
@@ -44,11 +39,11 @@ spectral_decay/
 
 # AI
 CLAUDE.md
+plans/
 
 spectrum/
 spectral_decay/
 ternary/
-ntk_indices/
 exports/
 thesis_plots/
 run_teacher_generated.sh
@@ -61,3 +56,7 @@ plot_all.sh
 # WIP/local run scripts: keep the folder, ignore its contents.
 run_scripts/*
 !run_scripts/.gitkeep
+
+# WIP/local configs: keep the folder, ignore its contents.
+configs/*
+!configs/.gitkeep

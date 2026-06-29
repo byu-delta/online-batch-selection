@@ -1,7 +1,7 @@
-# Config template. __REQUIRED__ leaves are filled by generate_configs.
+# Merged single-file config. Representative real run:
+# CIFAR3 + 3-layer deep-linear model + RhoLoss selection (CLIP teacher).
 
 # Run-name template: literals are plain strings; $dotted.path are config refs.
-# Rendered at runtime against each generated config's filled-in values.
 run_name_format:
   - run
   - $dataset.name
@@ -10,7 +10,7 @@ run_name_format:
   - lr: [$training_opt.optim_params.lr]
   - $training_opt.loss_type
 
-seed: __REQUIRED__
+seed: 1
 
 dataset:
   name: CIFAR3  # classes are dogs, cats, birds
@@ -25,7 +25,7 @@ networks:
   params:
     m_type: deeplinear
     hidden_dim: 1000
-    num_hidden_layers: __REQUIRED__
+    num_hidden_layers: 3
 
 training_opt:
   num_epochs: 300
@@ -43,7 +43,7 @@ training_opt:
   loss_type: CrossEntropy
   loss_params: {}
 
-method: __REQUIRED__
+method: RhoLoss
 method_opt:
   ratio: 0.1
   balance: False
@@ -51,7 +51,7 @@ method_opt:
   warmup_epochs: 0
   uniform_epochs: 0
 
-teacher_model_source: clip
+teacher_model_source: clip  # Supported: "local_pretrained", "clip", "timm"
 clip:
   clip_architecture: 'ViT-B/16'
   tau: 4
@@ -62,14 +62,14 @@ diagnostics:
     save_init: 5
     save_freq: 4
   diagnostics:
-    TrainLoss: {}
-    TrainAcc: {}
-    ValLoss: {}
-    ValAcc: {}
-    LogitNormL2: {}
-    Checkpoint: {}
-    SelectedPoints: {}
+    - TrainLoss: {}
+    - TrainAcc: {}
+    - ValLoss: {}
+    - ValAcc: {}
+    - LogitNormL2: {}
+    - Checkpoint: {}
+    - SelectedPoints: {}
 
 wandb:
-  project: "Matthew—Deep Linear Networks"
+  project: "Template"
   mode: offline

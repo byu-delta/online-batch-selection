@@ -1,0 +1,84 @@
+# Basic 2-class Gaussian blobs config. Centers are drawn uniformly on the unit
+# sphere (random_unit_sphere), so difficulty is set by cluster_std relative to
+# the fixed inter-center distance (~sqrt(2) in high dimensions). Scale the sphere
+# with center_scale to tighten the margin further.
+
+run_name_format:
+  - run
+  - $networks.type
+  - $dataset.name
+  - $method
+  - $training_opt.optimizer
+  - lr: [$training_opt.optim_params.lr]
+  - $training_opt.loss_type
+
+seed: 1
+
+dataset:
+  name: MakeBlobs
+  n_samples: 16384
+  n_features: 32
+  centers_type: antipodal_unit_sphere
+  center_scale: 1.0
+  cluster_std: 1.0
+  test_size: 0.2
+  random_state: 42
+  standardize: True
+  generate_new: False
+  include_teacher: False
+  input_dim: [1, 32]
+  wnoised_alpha: 1.0  
+
+networks:
+  type: Linear
+  params:
+    m_type: linear
+
+training_opt:
+  num_epochs: 200
+  num_data_workers: 1
+  batch_size: 320
+  test_batch_size: 512
+  optimizer: SGD
+  optim_params:
+    lr: 0.01
+    weight_decay: 0.01
+  scheduler: constant
+  scheduler_params: {}
+  loss_type: CrossEntropy
+  loss_params: {}
+
+teacher_model_source: hyperplane_vector
+
+method: RhoLoss
+method_opt:
+  ratio: 1.0
+  balance: False
+  ratio_scheduler: constant
+  warmup_epochs: 0
+
+diagnostics:
+  logging_defaults:
+    log_interval: logarithmic
+    save_init: 5
+    save_freq: 4
+  diagnostics:
+    - TrainLoss: {}
+    - TrainAcc: {}
+    - ValLoss: {}
+    - ValAcc: {}
+    - Timing: {}
+    - Checkpoint: {}
+    - WStarTestAcc: {}
+    - WHatTestAcc: {}
+    - BayesAccAntipodalGaussian: {}
+    - MinibatchScores:
+        statistic: mean
+    - MinibatchScores:
+        statistic: median
+    - MinibatchScores:
+        statistic: std
+
+wandb:
+  project: "Matthew—Deep Linear Experiments (June 28)"
+  mode: online

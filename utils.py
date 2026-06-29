@@ -1,9 +1,61 @@
+import shlex
 import string
+import subprocess
 from datetime import datetime
 import secrets
 import os
 import csv
 import yaml
+
+from enum import Enum
+
+class RunType(Enum):
+    NORMAL = 0
+    SBATCH = 1
+    SRUN = 2
+
+def run_job(
+        config_path, 
+        run_type: RunType = RunType.SBATCH,
+        *,
+        cpus: str = '4',
+        mem: str = '32GB', # gb
+        time: str = '1:00:00',
+        name: str = 'online-bs'
+    ):
+    python_cmd = ["python", "main.py", "--config", config_path]
+    if run_type == RunType.NORMAL:
+        subprocess.run(python_cmd, check=True)
+        return
+    
+    # compute nodes don't have internet
+    python_cmd.append("--wandb_not_upload")
+
+    slurm_flags = [
+        "--gres=gpu:1",
+        f"--cpus-per-task={cpus}",
+        f"--mem={mem}",
+        f"--time={time}",
+        f"--job-name={name}",
+    ]
+
+    if run_type == RunType.SRUN:
+        subprocess.run(["srun"] + slurm_flags + python_cmd, check=True)
+        return
+    
+    slurm_flags += [
+        "--output=logs/slurm/%j.out",
+        "--error=logs/slurm/%j.err",
+    ]
+
+    if run_type == RunType.SBATCH:
+        subprocess.run(
+            ["sbatch"] + slurm_flags + [f"--wrap={shlex.join(python_cmd)}"],
+            check=True,
+        )
+        return
+
+
 
 def get_configs(fname):
     with open(fname, 'r') as f:
