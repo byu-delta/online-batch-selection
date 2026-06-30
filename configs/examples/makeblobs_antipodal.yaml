@@ -4,15 +4,11 @@
 # with center_scale to tighten the margin further.
 
 run_name_format:
-  - run
-  - $networks.type
+  - example
   - $dataset.name
   - $method
-  - $training_opt.optimizer
-  - lr: [$training_opt.optim_params.lr]
-  - $training_opt.loss_type
 
-seed: __REQUIRED__
+seed: 1
 
 dataset:
   name: MakeBlobs
@@ -30,9 +26,11 @@ dataset:
   wnoised_alpha: 1.0  
 
 networks:
-  type: Linear
+  type: DeepLinear
   params:
-    m_type: linear
+    m_type: deep_linear
+    num_hidden_layers: 3
+    hidden_dim: 1000
 
 training_opt:
   num_epochs: 200
@@ -56,8 +54,7 @@ method_opt:
   balance: False
   ratio_scheduler: constant
   warmup_epochs: 0
-  scores_as_distribution: __REQUIRED__
-  softmax_lambda: 1.0
+  scores_as_distribution: False
 
 diagnostics:
   logging_defaults:
@@ -65,15 +62,15 @@ diagnostics:
     save_init: 5
     save_freq: 4
   diagnostics:
-    - TrainLoss: {}
-    - TrainAcc: {}
-    - ValLoss: {}
-    - ValAcc: {}
-    - Timing: {}
-    - Checkpoint: {}
-    - WStarTestAcc: {}
-    - WHatTestAcc: {}
-    - BayesAccAntipodalGaussian: {}
+    - TrainLoss
+    - TrainAcc
+    - ValLoss
+    - ValAcc
+    - Timing
+    - Checkpoint
+    - WStarTestAcc
+    - WHatTestAcc
+    - BayesAccAntipodalGaussian
     - MinibatchScores:
         statistic: mean
     - MinibatchScores:
@@ -86,5 +83,5 @@ diagnostics:
         statistic: max
 
 wandb:
-  project: "Template"
+  project: "Example"
   mode: online
