@@ -27,7 +27,7 @@ repository root.
 `main.py` takes **one merged YAML config** via `--config`:
 
 ```bash
-python main.py --config template_configs/cifar3_rholoss.yaml
+python main.py --config configs/examples/cifar3_template.yaml
 ```
 
 Common flags:
@@ -53,7 +53,7 @@ To run interactively on a P100 node:
 ```bash
 salloc -C pascal --time=1:00:00 --ntasks=1 --nodes=1 --gpus=1 --mem=8000M
 mamba activate online-bs-p100
-python main.py --config template_configs/makeblobs_basic.yaml --wandb_not_upload
+python main.py --config configs/examples/makeblobs_antipodal.yaml --wandb_not_upload
 ```
 
 ---
@@ -120,9 +120,12 @@ wandb:                       # passed to wandb.init(); --wandb_not_upload overri
   mode: online               # online | offline | disabled
 ```
 
-Ready-to-run example configs live in `template_configs/` (e.g. `cifar3_rholoss.yaml`,
-`makeblobs_basic.yaml`, `mnist_basic.yaml`, `cifar10_basic.yaml`,
-`teacher_generated_basic.yaml`).
+Ready-to-run example configs live in `configs/examples/` (e.g. `cifar3_template.yaml`,
+`makeblobs_antipodal.yaml`, `mnist_noise.yaml`) — that subfolder is tracked in
+git, so it should only hold examples meant to be shared. Your own configs
+(personal sweeps, one-offs, scratch edits) go directly in `configs/`: the rest
+of that folder is git-ignored, so anything there stays local. Copy an example
+in and edit it rather than editing the example in place.
 
 ---
 
@@ -157,28 +160,27 @@ Sweeps use a **template config** plus `generate_configs.py`. A template is a
 normal merged config with some leaves set to the sentinel `__REQUIRED__`:
 
 ```yaml
-# template_configs/cifar3_deep_linear_template.yaml (excerpt)
+# configs/examples/cifar3_template.yaml (excerpt)
 seed: __REQUIRED__
-method: __REQUIRED__
 training_opt:
+  optimizer: __REQUIRED__
   optim_params: { lr: __REQUIRED__ }
-networks:
-  params: { num_hidden_layers: __REQUIRED__ }
 ```
 
 A submission script fills every `__REQUIRED__` leaf over the Cartesian product of
-value lists, writing one concrete config per combination into `./configs-temp/`:
+value lists, writing one concrete config per combination into `./.configs-temp/`.
+See `run/examples/run_from_config_template.py` for a working example:
 
 ```python
-# run_cifar_3_deep_linear.py (excerpt)
-from generate_configs import generate_configs
+from run_utils import run_job, RunType, generate_configs
 
+TEMPLATE = "configs/examples/cifar3_template.yaml"
 PARAMS_TO_VARY = {
     "seed": [1, 2, 3],                       # seed is swept like any other key
-    "method": ["RhoLoss"],
-    "networks.params.num_hidden_layers": [3],
+    "training_opt.optimizer": ["SGD", "AdamW"],
+    "training_opt.optim_params.lr": [0.001, 0.01, 0.1],
 }
-config_paths = generate_configs("template_configs/cifar3_deep_linear_template.yaml", PARAMS_TO_VARY)
+config_paths = generate_configs(TEMPLATE, PARAMS_TO_VARY)
 ```
 
 Rules: every key in `PARAMS_TO_VARY` must be `__REQUIRED__` in the template, and
@@ -215,23 +217,29 @@ A metric's W&B key can be overridden, e.g. on a noisy dataset:
 
 ## 7. Submitting batch jobs to SLURM
 
-Tracked example submission scripts live in **`template_run/`**; they
-generate/select configs and submit one `sbatch` job each. Run them **from the
-repo root** with the environment active:
+Tracked example submission scripts live in **`run/examples/`**; they
+generate/select configs and submit one job each via `run_utils.run_job`
+(`run/run_utils/`, also tracked since the examples import it). **Copy one into `run/` first**, then run it from there:
 
 ```bash
-python template_run/run_basic.py                # basic single-dataset baselines
-python template_run/run_cifar_3_deep_linear.py  # templated CIFAR3 sweep
+cp run/examples/run_from_configs.py run/
+python run/run_from_configs.py
 ```
 
-For your own ad-hoc/WIP sweeps, copy one into **`run/`** — that folder is
-tracked but its contents are git-ignored, so personal scripts stay local.
+Both examples default to `RunType.DRY` (prints what would run without
+submitting) — change the `RUN_TYPE` constant at the top of the copied script
+to `NORMAL`, `SBATCH`, or `SRUN` to actually run.
+
+For your own ad-hoc/WIP sweeps, likewise copy a config from **`configs/examples/`**
+into **`configs/`** itself and edit from there. `run/` and `configs/` are
+tracked folders, but everything in them is git-ignored except the `examples/`
+(and `run/run_utils/`) subfolders, so personal scripts and configs stay local
+while the examples they were copied from stay clean for others to reuse.
 
 Each submitted job requests a GPU and `--requeue`, so a preempted job lands back
 in the **same** run directory and resumes from its rolling checkpoint. SLURM
 stdout/stderr go to `logs/slurm/%j.{out,err}` and are symlinked into the run
-dir. Set `USE_SLURM = False` at the top of a script to run locally instead of
-submitting.
+dir.
 
 To resume / extend a finished run, point a config's `resume.from` at an existing
 run directory (optionally with `resume.additional_epochs`).
@@ -250,11 +258,15 @@ run directory (optionally with `resume.additional_epochs`).
   `data/__init__.py` (CIFAR3/10/100, MNIST/FashionMNIST, TinyImageNet, MakeBlobs,
   Teacher_Generated, and `*_Noise` variants).
 - **`models/`** — model definitions (ResNet, LeNet, Linear, DeepLinear, TwoLayer).
-- **`template_configs/`** — tracked ready-to-run configs and sweep templates; **`configs/`** — local/WIP configs (contents git-ignored).
+- **`configs/examples/`** — tracked ready-to-run configs and sweep templates;
+  rest of **`configs/`** — your local/WIP configs (git-ignored). Copy an
+  example out of `examples/` before editing.
 - **`run_dir.py`** — run-name rendering, atomic run-dir creation, resume plumbing.
-- **`generate_configs.py`** — template → concrete configs for sweeps.
-- **`template_run/`** — tracked example SLURM submission scripts;
-  **`run/`** — your local/WIP submission scripts (contents git-ignored).
+- **`run/run_utils/generate_configs.py`** — template → concrete configs for sweeps.
+- **`run/examples/`** and **`run/run_utils/`** — tracked example SLURM
+  submission scripts and the package they import; rest of **`run/`** — your
+  local/WIP submission scripts (git-ignored). Copy an example out of
+  `examples/` into `run/` before editing/running it.
 - **`experiments/`** — run outputs (git-ignored).
 
 ---

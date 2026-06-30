@@ -52,10 +52,12 @@ run_cifar100.sh
 run_all.sh
 plot_all.sh
 
-# WIP/local run scripts: keep the folder, ignore its contents.
+# WIP/local run scripts: keep the folder, ignore its contents except examples
+# and run_utils (the package the examples depend on).
 run/*
-!run/.gitkeep
+!run/examples/
+!run/run_utils/
 
-# Local configs: keep the folder, ignore its contents.
+# Local configs: keep the folder, ignore its contents except examples.
 configs/*
-!configs/.gitkeep
+!configs/examples/
