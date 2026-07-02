@@ -241,7 +241,7 @@ class SelectedPoints(Diagnostic):
         if mask is not None:
             m = mask.cpu().numpy().astype(bool) if isinstance(mask, torch.Tensor) else np.asarray(mask, dtype=bool)
             self._masks.append(m)
-        return DiagnosticInfo("selected_points_mask", mask, LogType.FILEONLY)
+        return DiagnosticInfo("selected_points_mask", mask, log_type=LogType.FILEONLY)
 
     def finalize(self):
         if not self._masks:
