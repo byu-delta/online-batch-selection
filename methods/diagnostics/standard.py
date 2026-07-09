@@ -6,7 +6,7 @@ Compute deps, unregistered, never logged:
   PerSampleLossError(loader, label_source)
 Logged leaves, registered with a manager:
   TrainLoss/TrainAcc/ValLoss/ValAcc, TrueLabel*{Loss,Acc}, LogitNormL2,
-  Checkpoint, SelectedPoints, Epoch, Timing
+  Checkpoint, SelectedPoints, TrainingState, Timing
 """
 
 import os
