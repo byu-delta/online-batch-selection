@@ -37,6 +37,8 @@ def run_job(
     
     # compute nodes don't have internet
     python_cmd.append("--wandb_not_upload")
+    python_cmd.append("--experiments_dir")
+    python_cmd.append("./experiments/default_weights_init")
 
     slurm_flags = [
         "--gres=gpu:1",

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from .initialization import initialize_weights
+
 
 def create_model(m_type='twolayerbinary', input_dim=[1,1,20], hidden_dim=15, output_dim=None, num_classes=None, pretrained=False, **kwargs):
     input_dim_scalar = math.prod(input_dim)
@@ -10,17 +12,20 @@ def create_model(m_type='twolayerbinary', input_dim=[1,1,20], hidden_dim=15, out
     if m_type == 'twolayerbinary':
         if output_dim != 1:
             raise ValueError('TwoLayerBinary requires output_dim=1.')
-        model = TwoLayerBinary(input_dim=input_dim_scalar, hidden_dim=hidden_dim, output_dim=output_dim)
+        model = TwoLayerBinary(input_dim=input_dim_scalar, hidden_dim=hidden_dim, output_dim=output_dim, **kwargs)
     else:
-        model = TwoLayer(input_dim=input_dim_scalar, hidden_dim=hidden_dim, output_dim=output_dim)
+        model = TwoLayer(input_dim=input_dim_scalar, hidden_dim=hidden_dim, output_dim=output_dim, **kwargs)
     return model
 
 class TwoLayer(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, init_weights_func=None, **kwargs):
         super(TwoLayer, self).__init__()
 
         self.linear1 = nn.Linear(input_dim, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim,output_dim)
+
+        # Initialize weights using the specified initialization function. If none is provided, use the default initialization.
+        initialize_weights(self, init_weights_func)
 
     def forward(self, x, **kwargs):
         feature = kwargs.get('need_features', False)

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from .initialization import initialize_weights
+
 
 def create_model(m_type='linear', input_dim=[1,1,10], num_classes=10, pretrained=False, *, activation=nn.Identity(), **kwargs):
     input_dim_scalar = math.prod(input_dim)
@@ -26,7 +28,8 @@ def create_model(m_type='linear', input_dim=[1,1,10], num_classes=10, pretrained
         input_dim=input_dim_scalar, 
         hidden_dims=hidden_dims, 
         num_classes=num_classes,
-        activation=activation
+        activation=activation,
+        **kwargs
     )
     return model
 
@@ -34,7 +37,7 @@ def create_model_relu(*args, **kwargs):
     return create_model(*args, activation=nn.ReLU(), **kwargs)
 
 class DeepLinear(nn.Module):
-    def __init__(self, input_dim, hidden_dims, num_classes, flatten_input=True, activation=nn.Identity()):
+    def __init__(self, input_dim, hidden_dims, num_classes, flatten_input=True, activation=nn.Identity(), init_weights_func=None, **kwargs):
         super().__init__()
 
         all_dims = [input_dim] + hidden_dims + [num_classes]
@@ -49,12 +52,8 @@ class DeepLinear(nn.Module):
 
         self.classifier = nn.Linear(all_dims[-2], all_dims[-1])
 
-        # Orthogonal init avoids vanishing forward/backward signal that default init causes at large depth
-        gain = nn.init.calculate_gain('relu') if isinstance(activation, nn.ReLU) else 1.0
-        for layer in self.hidden:
-            if isinstance(layer, nn.Linear):
-                nn.init.orthogonal_(layer.weight, gain=gain)
-        nn.init.orthogonal_(self.classifier.weight)
+        # Initialize weights using the specified initialization function. If none is provided, use the default initialization.
+        initialize_weights(self, init_weights_func, activation=activation)      
 
         self.flatten_input = flatten_input
 

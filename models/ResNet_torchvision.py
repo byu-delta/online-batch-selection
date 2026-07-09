@@ -3,6 +3,8 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from .initialization import initialize_weights
+
 
 def create_model(m_type='resnet101', num_classes=1000, in_channels=3, pretrained = False, **kwargs):
     # create various resnet models
@@ -27,12 +29,15 @@ def create_model(m_type='resnet101', num_classes=1000, in_channels=3, pretrained
         model = models.resnext101_32x8d(weights=weights)
     else:
         raise ValueError('Wrong Model Type')
-        
-    model = ResNet(model, num_classes, in_channels=in_channels)
+    
+    if pretrained:
+        model = ResNet(model, num_classes, in_channels=in_channels)
+    else:
+        model = ResNet(model, num_classes, in_channels=in_channels, **kwargs)
     return model
 
 class ResNet(nn.Module):
-    def __init__(self, model, num_classes, in_channels=3):
+    def __init__(self, model, num_classes, in_channels=3, init_weights_Func=None, **kwargs):
         super(ResNet, self).__init__()
         self.conv1 = nn.Conv2d(
             in_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False
@@ -46,6 +51,9 @@ class ResNet(nn.Module):
         self.layer4 = model.layer4
         self.avgpool = model.avgpool
         self.fc = nn.Linear(model.fc.in_features, num_classes, bias=True)
+
+        # Initialize weights using the specified initialization function. If none is provided, use the default initialization.
+        initialize_weights(self, init_weights_func)
 
     def forward(self, x, **kwargs):
         

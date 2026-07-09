@@ -9,11 +9,13 @@ import clip
 import math
 
 import data.data_utils.mean_std as mean_std
+from .initialization import initialize_weights
+
 
 
 
 class KFCALLAWrapper(nn.Module):
-    def __init__(self, net, num_effective_data, prior_precision, n_f_samples, input_dim, last_layer_name="fc", momentum=0.99) :
+    def __init__(self, net, num_effective_data, prior_precision, n_f_samples, input_dim, last_layer_name="fc", momentum=0.99, init_weights_func=None, **kwargs):
         super(KFCALLAWrapper, self).__init__()
         self.net = net
         self.num_effective_data = num_effective_data
@@ -41,6 +43,9 @@ class KFCALLAWrapper(nn.Module):
         self.register_buffer("A", torch.zeros(feature_dim, feature_dim))
         self.register_buffer("G", torch.zeros(out_dim, out_dim))
         self.register_buffer("G2", torch.zeros(out_dim, out_dim))
+
+        # Initialize weights using the specified initialization function. If none is provided, use the default initialization.
+        initialize_weights(self, init_weights_func)
     
     def forward_hook(self):
         def hook(module, input, output):

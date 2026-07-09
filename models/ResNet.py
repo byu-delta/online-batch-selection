@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from .initialization import initialize_weights
 
 
 class BasicBlock(nn.Module):
@@ -73,7 +74,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, in_channels=3):
+    def __init__(self, block, num_blocks, num_classes=10, in_channels=3, init_weights_func="ResNet_kaiming_normal", **kwargs):
         super(ResNet, self).__init__()
         self.in_planes = 64
 
@@ -86,12 +87,10 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
         self.fc = nn.Linear(512*block.expansion, num_classes)
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+        # Initialize weights using the specified initialization function. If none is provided, use ResNet_kaiming_normal.
+        initialize_weights(self, init_weights_func)
+
+        
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -137,34 +136,34 @@ class ResNet(nn.Module):
         return out, feat
 
 
-def ResNet18(num_classes, in_channels=3):
-    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, in_channels=in_channels)
+def ResNet18(num_classes, in_channels=3, **kwargs):
+    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, in_channels=in_channels, **kwargs)
 
-def ResNet34(num_classes, in_channels=3):
-    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, in_channels=in_channels)
+def ResNet34(num_classes, in_channels=3, **kwargs):
+    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, in_channels=in_channels, **kwargs)
 
-def ResNet50(num_classes, in_channels=3):
-    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, in_channels=in_channels)
+def ResNet50(num_classes, in_channels=3, **kwargs):
+    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, in_channels=in_channels, **kwargs)
 
-def ResNet101(num_classes, in_channels=3):
-    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, in_channels=in_channels)
+def ResNet101(num_classes, in_channels=3, **kwargs):
+    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, in_channels=in_channels, **kwargs)
 
-def ResNet152(num_classes, in_channels=3):
-    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, in_channels=in_channels)
+def ResNet152(num_classes, in_channels=3, **kwargs):
+    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, in_channels=in_channels, **kwargs)
 
 
 def create_model(m_type='resnet101',num_classes=1000, in_channels=3, pretrained = False, **kwargs):
     if not pretrained:
         if m_type == 'resnet18':
-            model = ResNet18(num_classes, in_channels)
+            model = ResNet18(num_classes, in_channels, **kwargs)
         elif m_type == 'resnet34':
-            model = ResNet34(num_classes, in_channels)
+            model = ResNet34(num_classes, in_channels, **kwargs)
         elif m_type == 'resnet50':
-            model = ResNet50(num_classes, in_channels)
+            model = ResNet50(num_classes, in_channels, **kwargs)
         elif m_type == 'resnet101':
-            model = ResNet101(num_classes, in_channels)
+            model = ResNet101(num_classes, in_channels, **kwargs)
         elif m_type == 'resnet152':
-            model = ResNet152(num_classes, in_channels)
+            model = ResNet152(num_classes, in_channels, **kwargs)
         else:
             raise ValueError('Wrong Model Type')
     else:
