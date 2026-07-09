@@ -11,7 +11,10 @@ def sync(save_dirs):
 
     wandb_dirs = []
     for d in dirs:
-        wandb_dirs.extend(glob.glob(f"{d}/wandb/offline-run-*", recursive=True))
+        for path in glob.glob(f"{d}/wandb/offline-run-*", recursive=True):
+            if "slurm_history" in path.split(os.sep):
+                continue
+            wandb_dirs.append(path)
 
     if wandb_dirs:
         cmd = ["wandb", "sync", *wandb_dirs, "--no-include-synced"]

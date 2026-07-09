@@ -150,31 +150,30 @@ class RhoLoss(SelectionMethod):
         self.model.train()
         return index_selected.cpu().numpy(), reducible_loss.detach().cpu()
 
-    def before_batch(self, i, inputs, targets, indexes, epoch):
+    def before_batch(self, i, inputs, targets, indexes):
         """Prepare the batch for training by selecting samples based on reducible loss.
         Args:
             i (int): Current batch index.
             inputs (torch.Tensor): Input data for the current batch.
             targets (torch.Tensor): Corresponding target labels for the current batch.
             indexes (torch.Tensor): Indices of the samples in the current batch.
-            epoch (int): Current epoch number.
         Returns:
             tuple: Selected inputs, targets, and indexes for the current batch.
         """
         # Get the ratio for the current epoch
-        ratio = self.get_ratio_per_epoch(epoch)
+        ratio = self.get_ratio_per_epoch(self._current_epoch)
         if ratio == 1.0:
             if i == 0:
                 self.logger.info('using all samples')
-            return super().before_batch(i, inputs, targets, indexes, epoch)
+            return super().before_batch(i, inputs, targets, indexes)
         else:
             if i == 0:
                 self.logger.info(f'balance: {self.balance}')
-                self.logger.info('selecting samples for epoch {}, ratio {}'.format(epoch, ratio))
+                self.logger.info('selecting samples for epoch {}, ratio {}'.format(self._current_epoch, ratio))
 
         # Get indices based on reducible loss
         number_to_select = max(1, int(inputs.shape[0] * ratio))
-        indices, scores = self.reducible_loss_selection(inputs, targets, indexes, number_to_select, epoch)
+        indices, scores = self.reducible_loss_selection(inputs, targets, indexes, number_to_select, self._current_epoch)
         inputs = inputs[indices]
         targets = targets[indices]
         indexes = indexes[indices]

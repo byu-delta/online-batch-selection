@@ -101,17 +101,17 @@ class GradNormIS(SelectionMethod):
         # Renormalize
         return new_weights / torch.sum(new_weights)
 
-    def before_batch(self, i, inputs, targets, indexes, epoch):
-        ratio = self.get_ratio_per_epoch(epoch)
+    def before_batch(self, i, inputs, targets, indexes):
+        ratio = self.get_ratio_per_epoch(self._current_epoch)
         if ratio == 1.0:
             if i == 0:
                 self.logger.info("using all samples")
-            return super().before_batch(i, inputs, targets, indexes, epoch)
+            return super().before_batch(i, inputs, targets, indexes)
         else:
             if i == 0:
                 self.logger.info(f"balance: {self.balance}")
                 self.logger.info(
-                    "selecting samples for epoch {}, ratio {}".format(epoch, ratio)
+                    "selecting samples for epoch {}, ratio {}".format(self._current_epoch, ratio)
                 )
         _, grad = self.calc_grad(inputs, targets, indexes)
         grad_norm = torch.norm(grad, dim=1)

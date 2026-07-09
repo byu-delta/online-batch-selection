@@ -24,6 +24,7 @@ POST_BATCH_DIAGNOSTICS = {
     "NTK": NTK,
     "Checkpoint": Checkpoint,
     "MinibatchScores": MinibatchScores,
+    "TrainingState": TrainingState,
 }
 EPOCH_END_DIAGNOSTICS = {
     "SelectedPoints": SelectedPoints,

@@ -33,6 +33,7 @@ class SelectionMethod(object):
         self.model = getattr(models, model_type)(**model_args)
         self.training_opt = config['training_opt']
         self.start_epoch = 0
+        self._current_epoch = self.start_epoch
         self.best_acc = 0
         self.best_epoch = 0
         self.is_best = False
@@ -141,6 +142,7 @@ class SelectionMethod(object):
             checkpoint = torch.load(resume_path, map_location='cpu', weights_only=False)
             self.resume_checkpoint = checkpoint
             self.start_epoch = int(checkpoint['epoch'])
+            self._current_epoch = self.start_epoch
             self.best_acc = checkpoint['best_acc']
             self.best_epoch = checkpoint['best_epoch']
             self.total_step = int(checkpoint.get('total_step', 0))
@@ -171,16 +173,17 @@ class SelectionMethod(object):
         self.logger.info(f'Begin training for {self.method_name}...')
 
         if self.total_step == 0:
-            self._run_post_batch_diagnostics(epoch=self.start_epoch, batch_idx=-1)
+            self._run_post_batch_diagnostics(batch_idx=-1)
         else:
             self.logger.info(
                 f"=====> Resuming training at epoch {self.start_epoch + 1}, total_step {self.total_step}, "
                 f"best_epoch {self.best_epoch}, best_acc {self.best_acc:.4f}"
             )
         for epoch in range(self.start_epoch+1, self.epochs+1):
-            self.before_epoch(epoch)
-            self.train(epoch)
-            self.after_epoch(epoch)
+            self._current_epoch = epoch
+            self.before_epoch()
+            self.train()
+            self.after_epoch()
             if self.num_steps is not None and self.total_step >= self.num_steps:
                 self.logger.info(f'Finish training for {self.method_name} because num_steps {self.num_steps} is reached')
                 break
@@ -194,15 +197,15 @@ class SelectionMethod(object):
         self._last_minibatch_scores = None
         self._current_checkpoint_state = None
 
-    def before_epoch(self, epoch):
+    def before_epoch(self):
         # reset the per-epoch selected-point mask, then select samples
         self._epoch_selected_mask.fill(0)
         return
 
-    def after_epoch(self, epoch):
+    def after_epoch(self):
         self.diagnostics.run_epoch_end(
             total_steps=self.total_step,
-            epoch=epoch,
+            epoch=self._current_epoch,
             total_epochs=self.epochs,
         )
         return
@@ -210,7 +213,7 @@ class SelectionMethod(object):
     def after_run(self):
         self.diagnostics.finalize()
 
-    def before_batch(self, i, inputs, targets, indexes, epoch) -> MinibatchInfo:
+    def before_batch(self, i, inputs, targets, indexes) -> MinibatchInfo:
         # online batch selection
         return MinibatchInfo(inputs, targets, indexes)
 
@@ -221,16 +224,16 @@ class SelectionMethod(object):
         idx = idx.reshape(-1).astype(np.int64)
         self._epoch_selected_mask[idx] = 1
 
-    def after_batch(self, i, inputs, targets, indexes, outputs, epoch):
+    def after_batch(self, i, inputs, targets, indexes, outputs):
         self.total_step += 1
         # self.ema_net.update()
 
         self._record_selected_points(indexes)
-        self._run_post_batch_diagnostics(epoch=epoch, batch_idx=i)
+        self._run_post_batch_diagnostics(batch_idx=i)
 
-    def _build_checkpoint_state(self, epoch):
+    def _build_checkpoint_state(self):
         return {
-            'epoch': epoch,
+            'epoch': self._current_epoch,
             'total_step': self.total_step,
             'total_time': self.total_time,
             'time_this_epoch': self.time_this_epoch,
@@ -243,11 +246,11 @@ class SelectionMethod(object):
             'rng_state': self._capture_rng_state(),
         }
 
-    def _run_post_batch_diagnostics(self, epoch, batch_idx):
-        self._current_checkpoint_state = self._build_checkpoint_state(epoch)
+    def _run_post_batch_diagnostics(self, batch_idx):
+        self._current_checkpoint_state = self._build_checkpoint_state()
         self.diagnostics.run_post_batch(
             total_steps=self.total_step,
-            epoch=epoch,
+            epoch=self._current_epoch,
             batch_idx=batch_idx,
             total_epochs=self.epochs,
             total_batches=len(self.train_loader),
@@ -256,7 +259,7 @@ class SelectionMethod(object):
         self.best_epoch = self.diagnostics.best_epoch
         self.is_best = self.diagnostics.is_best
 
-    def train(self, epoch):
+    def train(self):
         # train for one epoch and record time taken
         total_batch = len(self.train_loader)
         epoch_begin_time = time.time()
@@ -268,7 +271,7 @@ class SelectionMethod(object):
             metabatch_targets = datas["target"].cuda()
             metabatch_indexes = datas["index"]
             minibatch = self.before_batch(
-                i, metabatch_inputs, metabatch_targets, metabatch_indexes, epoch
+                i, metabatch_inputs, metabatch_targets, metabatch_indexes
             )
             self._last_minibatch_scores = minibatch.scores
             selected_outputs, features = (
@@ -301,7 +304,6 @@ class SelectionMethod(object):
                 selected_outputs,
                 loss,
                 minibatch.targets,
-                epoch,
                 features,
                 minibatch.indices,
                 batch_idx=i,
@@ -318,7 +320,6 @@ class SelectionMethod(object):
                 minibatch.targets,
                 minibatch.indices,
                 selected_outputs.detach(),
-                epoch,
             )
 
         now = time.time()
@@ -326,5 +327,5 @@ class SelectionMethod(object):
         self.total_time = now - self.run_begin_time
         self.scheduler.step()
 
-    def while_update(self, outputs, loss, targets, epoch, features, indexes, batch_idx, batch_size):
+    def while_update(self, outputs, loss, targets, features, indexes, batch_idx, batch_size):
         pass
