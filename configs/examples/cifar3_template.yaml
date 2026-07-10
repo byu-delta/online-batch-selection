@@ -39,7 +39,7 @@ training_opt:
 
 method: Uniform
 method_opt:
-  ratio: 1.0
+  ratio: 0.1
   balance: False
   ratio_scheduler: constant
   warmup_epochs: 0
