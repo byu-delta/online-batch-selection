@@ -192,19 +192,89 @@ raises). Generated filenames encode the varied values, e.g.
 
 ## 6. Diagnostics
 
+### 6.1 Config format
+
 The `diagnostics.diagnostics` block is a **list** of leaves to log. Each entry
 is either a bare class name (`- TrainLoss`) or a single-key dict with params
-(`- MinibatchScores: {statistic: mean}`). Using a list allows the same class to
-appear multiple times with different params. Available leaves include:
+(`- MinibatchScoresSummary: {statistic: mean}`). Using a list allows the same
+class to appear multiple times with different params (a plain YAML mapping
+would silently drop duplicate keys).
 
-- **Snapshots:** `TrainLoss`, `TrainAcc`, `ValLoss`, `ValAcc`
-  (and `TrueLabelTrainLoss`/`TrueLabelTrainAcc` for clean-label metrics on noisy data)
-- **`Timing`** — wall-clock `total_time` / `time_this_epoch` (epoch end)
-- **`Progress`** — geodesic progress of predictions toward the labels
-- **`LogitNormL2`**, **`ParamNorms`**, **`GradNorms`**, **`WeightMatrixNorms`**
-- **`LinearProbe`**, **`NTK`** (heavier; take `params`)
-- **`Checkpoint`** — rolling + best checkpoint (needed to resume / track best acc)
-- **`SelectedPoints`** — noisy-selection stats (epoch end)
+### 6.2 How the list is built (`create_diagnostics.py`)
+
+`create_diagnostics(method, ...)` reads `config["diagnostics"]["diagnostics"]`
+and, for each entry:
+
+1. Looks up the class name in one of three registries
+   (`methods/diagnostics/diagnostics.py`): `POST_BATCH_DIAGNOSTICS`,
+   `EPOCH_END_DIAGNOSTICS`, or `TRAIN_END_DIAGNOSTICS` — an unknown name
+   raises. Each registry feeds a separate `DiagnosticsManager`, one per
+   training phase:
+   - **`POST_BATCH`** — driven after every training batch
+     (`SelectionMethod.after_batch` → `_run_post_batch_diagnostics`), subject
+     to a shared logging schedule (below).
+   - **`EPOCH_END`** — driven after every epoch (`SelectionMethod.after_epoch`);
+     always runs (`should_run=lambda state: True`), not schedule-gated.
+   - **`TRAIN_END`** — driven once, after training finishes
+     (`SelectionMethod.after_run` → `diagnostics.finalize()`).
+2. Instantiates the diagnostic with its config params plus a `log_path`
+   (`logs/<log_name>.log`), where `log_name` is the class name, suffixed
+   `_0`, `_1`, … if the same class appears more than once in the list.
+3. Registers it with its phase's manager.
+
+Diagnostics form a dependency DAG rather than each computing everything from
+scratch: a diagnostic's `_run` calls `.run()` on its dependencies (e.g. a
+shared `ForwardPass` or `PerSampleLossError`), and `DiagnosticsManager.build`
+(`methods/diagnostics/base.py`) deduplicates — two leaves that request an
+equal dependency (same class + same constructor args, via `__eq__`) share one
+instance, computed once per `TrainState` and cached (`Diagnostic.run`,
+`base.py:97`) rather than once per leaf.
+
+### 6.3 Logging schedule
+
+Post-batch diagnostics share one `LogSchedule` (`methods/diagnostics/schedule.py`),
+built from `diagnostics.logging_defaults`:
+
+```yaml
+diagnostics:
+  logging_defaults:
+    log_interval: logarithmic   # or "per_epoch"
+    save_init: 5                # first N epochs: log densely (see below)
+    save_freq: 4                 # subdivisions per epoch during save_init
+```
+
+- **`logarithmic`** (default): logs densely for the first `save_init` epochs
+  (every `total_batches // save_freq` batches), then once per epoch through
+  epoch 25, every 4th epoch through 65, and every 15th epoch after that (plus
+  always the final epoch and step 0).
+- **`per_epoch`**: logs only on the last batch of each epoch
+  (`state.batch_idx == total_batches - 1`), ignoring `save_init`/`save_freq`.
+
+Epoch-end and train-end diagnostics aren't gated by `LogSchedule` at all —
+epoch-end always fires at epoch end, train-end fires once at the very end.
+
+### 6.4 Available leaves
+
+- **Snapshots (post batch):** `TrainLoss`, `TrainAcc`, `ValLoss`, `ValAcc`
+  (and `TrueLabelTrainLoss`/`TrueLabelTrainAcc` for clean-label metrics on
+  noisy data)
+- **`TrainProgress`, `ValProgress`** (post batch) — geodesic progress of
+  predictions toward the labels
+- **`LogitNormL2`, `ParamNorms`, `GradNorms`, `WeightMatrixNorms`** (post batch)
+- **`LinearProbe`, `NTK`** (post batch; heavier, take `params`)
+- **`Checkpoint`** (post batch) — rolling + best checkpoint (needed to resume
+  / track best acc)
+- **`TrainingState`** (post batch) — logs `epoch`/`batch_idx`/`total_steps`
+- **`MinibatchScoresSummary`** (post batch) — summary of the current
+  minibatch's selection scores
+- **`PerSampleProgressSummary`, `PerSampleVolatilitySummary`** (post batch,
+  DPD diagnostics) — summary of per-sample prediction progress / volatility
+  on a held-out loader
+- **`Timing`** (epoch end) — wall-clock `total_time` / `time_this_epoch`
+- **`SelectedPoints`, `SelectedPointsSummary`** (epoch end) — noisy-selection
+  stats
+- **`WStarTestAcc`, `WHatTestAcc`, `BayesAccAntipodalGaussian`** (train end)
+  — final learned-parameter-recovery metrics (antipodal-Gaussian setups)
 
 A metric's W&B key can be overridden, e.g. on a noisy dataset:
 
