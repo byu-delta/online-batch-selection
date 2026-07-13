@@ -59,7 +59,8 @@ diagnostics:
     - TrainAcc
     - ValLoss
     - ValAcc
-    - Progress
+    - TrainProgress
+    - ValProgress
     - Timing
     - Checkpoint
     - SelectedPoints # Only logged to file, not to W&B

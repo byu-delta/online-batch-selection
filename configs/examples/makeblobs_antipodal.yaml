@@ -71,16 +71,8 @@ diagnostics:
     - WStarTestAcc
     - WHatTestAcc
     - BayesAccAntipodalGaussian
-    - MinibatchScores:
-        statistic: mean
-    - MinibatchScores:
-        statistic: median
-    - MinibatchScores:
-        statistic: std
-    - MinibatchScores:
-        statistic: min
-    - MinibatchScores:
-        statistic: max
+    - MinibatchScoresSummary:
+        statistic: [mean, median, std, min, max]
 
 wandb:
   project: "Example"

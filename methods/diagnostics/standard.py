@@ -16,9 +16,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from methods.diagnostics.base import Diagnostic, DiagnosticInfo, LogType
+from methods.diagnostics.base import Diagnostic, DiagnosticInfo, LogType, Summary, _SUMMARY_STATS
 from run_dir import atomic_save
-
 
 # --------------------------------------------------------------------------- #
 # Layer 1: cached compute dependencies (built via manager.build, never registered)
@@ -170,25 +169,41 @@ class LogitNormL2(Diagnostic):
         return isinstance(other, LogitNormL2)
 
 
-class Progress(Diagnostic):
-    """Geodesic progress (in [0,1]) from the uniform-prediction point toward the
-    one-hot labels on the probability sphere, for train and val. Depends on the
-    shared forward passes."""
+class _ProgressLeaf(Diagnostic):
+    """Shared base for the train/val geodesic-progress leaves. Subclasses
+    MUST set loader_key and log_key; log_key may be overridden per-run via
+    the config's diagnostics params."""
+    loader_key = None      # 'train' (fixed_train_loader) | 'val' (test_loader)
+    log_key = None          # W&B metric name
+
+    _REQUIRED = ("loader_key", "log_key")
 
     def __init__(self, manager, should_run=None, **params):
+        if params.get("log_key") is not None:
+            self.log_key = params["log_key"]
+        for attr in self._REQUIRED:
+            if getattr(self, attr) is None:
+                raise TypeError(
+                    f"{type(self).__name__} must set class attr '{attr}' "
+                    f"(it is still None on the abstract _ProgressLeaf base)."
+                )
         super().__init__(manager, log_path=params.get("log_path"), should_run=should_run)
-        self.train_fp = manager.build(ForwardPass, manager, "train")
-        self.val_fp = manager.build(ForwardPass, manager, "val")
+        self.forward_pass = manager.build(ForwardPass, manager, self.loader_key)
 
     def _run(self):
-        train_fp = self.train_fp.run().info
-        val_fp = self.val_fp.run().info
-        train = _geodesic_progress(train_fp["log_probs"], train_fp["targets"])
-        val = _geodesic_progress(val_fp["log_probs"], val_fp["targets"])
-        return DiagnosticInfo("progress", {"train_progress": train, "val_progress": val})
+        fp = self.forward_pass.run().info
+        value = _geodesic_progress(fp["log_probs"], fp["targets"])
+        return DiagnosticInfo(self.log_key, {self.log_key: value})
 
     def __eq__(self, other):
-        return isinstance(other, Progress)
+        return isinstance(other, type(self))
+
+
+class TrainProgress(_ProgressLeaf):
+    loader_key, log_key = "train", "train_progress"
+
+class ValProgress(_ProgressLeaf):
+    loader_key, log_key = "val", "val_progress"
 
 
 class Checkpoint(Diagnostic):
@@ -313,40 +328,27 @@ class TrainingState(Diagnostic):
     def __eq__(self, other):
         return isinstance(other, TrainingState)
 
+class MinibatchScoreValues(Diagnostic):
+    """Dependency-only: exposes `method._last_minibatch_scores` as `info`."""
 
-_SCORE_STATS = {
-    "mean":   lambda t: t.mean().item(),
-    "median": lambda t: t.median().item(),
-    "max":    lambda t: t.max().item(),
-    "min":    lambda t: t.min().item(),
-    "std":    lambda t: t.std().item(),
-}
-
-
-class MinibatchScores(Diagnostic):
-    def __init__(self, manager, should_run=None, **params):
-        statistic = params.get("statistic")
-        if statistic not in _SCORE_STATS:
-            raise ValueError(
-                f"MinibatchScores: 'statistic' must be one of "
-                f"{list(_SCORE_STATS)}; got {statistic!r}."
-            )
-        self.statistic = statistic
-        self.log_key = params.get("log_key") or f"minibatch_score_{statistic}"
-        super().__init__(manager, log_path=params.get("log_path"), should_run=should_run)
+    def __init__(self, manager):
+        super().__init__(manager)
 
     def _run(self):
         scores = self.method._last_minibatch_scores
         if scores is None:
             epoch = self.manager.current_state.epoch
             if epoch > self.method.start_epoch:
-                self.method.logger.info(f"WARNING: scores were found to be None in MinibatchScores diagnostic in epoch {epoch}")
-            return DiagnosticInfo(self.log_key, {})
-        value = _SCORE_STATS[self.statistic](scores)
-        return DiagnosticInfo(self.log_key, {self.log_key: value})
+                self.method.logger.info(f"WARNING: scores were found to be None in MinibatchScoreValues diagnostic in epoch {epoch}")
+        return DiagnosticInfo("minibatch_scores", scores)
 
     def __eq__(self, other):
-        return isinstance(other, MinibatchScores) and self.statistic == other.statistic
+        return isinstance(other, MinibatchScoreValues)
+
+
+class MinibatchScoresSummary(Summary):
+    dependency_cls = MinibatchScoreValues
+    info_key = None
 
 
 def _geodesic_progress(log_probs, labels):
