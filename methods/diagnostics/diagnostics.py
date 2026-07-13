@@ -7,6 +7,7 @@ from methods.diagnostics.standard import *
 from methods.diagnostics.model_metrics import *
 from methods.diagnostics.ntk import *
 from methods.diagnostics.specialty import *
+from methods.diagnostics.delayed_prediction_dynamics import *
 
 POST_BATCH_DIAGNOSTICS = {
     "TrainLoss": TrainLoss,
@@ -16,15 +17,17 @@ POST_BATCH_DIAGNOSTICS = {
     "TrueLabelTrainLoss": TrueLabelTrainLoss,
     "TrueLabelTrainAcc": TrueLabelTrainAcc,
     "LogitNormL2": LogitNormL2,
-    "Progress": Progress,
+    "TrainProgress": TrainProgress,
+    "ValProgress": ValProgress,
     "ParamNorms": ParamNorms,
     "GradNorms": GradNorms,
     "WeightMatrixNorms": WeightMatrixNorms,
     "LinearProbe": LinearProbe,
     "NTK": NTK,
     "Checkpoint": Checkpoint,
-    "MinibatchScores": MinibatchScores,
+    "MinibatchScoresSummary": MinibatchScoresSummary,
     "TrainingState": TrainingState,
+    "PerSampleProgressSummary": PerSampleProgressSummary,
 }
 EPOCH_END_DIAGNOSTICS = {
     "SelectedPoints": SelectedPoints,

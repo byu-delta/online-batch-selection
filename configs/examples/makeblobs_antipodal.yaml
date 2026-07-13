@@ -71,15 +71,15 @@ diagnostics:
     - WStarTestAcc
     - WHatTestAcc
     - BayesAccAntipodalGaussian
-    - MinibatchScores:
+    - MinibatchScoresSummary:
         statistic: mean
-    - MinibatchScores:
+    - MinibatchScoresSummary:
         statistic: median
-    - MinibatchScores:
+    - MinibatchScoresSummary:
         statistic: std
-    - MinibatchScores:
+    - MinibatchScoresSummary:
         statistic: min
-    - MinibatchScores:
+    - MinibatchScoresSummary:
         statistic: max
 
 wandb:

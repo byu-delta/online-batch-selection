@@ -14,6 +14,16 @@ from enum import Enum
 from typing import Any, Callable, List, Optional
 
 
+# Some useful summary statistics
+_SUMMARY_STATS = {
+    "mean":   lambda t: t.mean().item(),
+    "median": lambda t: t.median().item(),
+    "max":    lambda t: t.max().item(),
+    "min":    lambda t: t.min().item(),
+    "std":    lambda t: t.std().item(),
+}
+
+
 class Phase(Enum):
     """Where in the training iteration a state was captured. Part of the cache
     key so states at the same global step but different points (the weights
@@ -137,6 +147,52 @@ class Diagnostic:
         )
 
     __hash__ = None
+
+
+class Summary(Diagnostic):
+    """Base for diagnostics that reduce a wrapped diagnostic's `info` to one
+    scalar via a named summary statistic (see `_SUMMARY_STATS`). Subclasses
+    set two class attributes:
+      - `dependency_cls`: the `Diagnostic` class to wrap.
+      - `info_key`: key to pull from the wrapped diagnostic's `info` if it's
+        a dict (e.g. `"progress"`), or `None` if `info` is already the raw
+        array to summarize.
+    Any constructor kwargs besides `statistic`/`log_key`/`log_path` are
+    forwarded to `dependency_cls`'s constructor.
+    """
+    dependency_cls = None
+    info_key = None
+
+    def __init__(self, manager, should_run=None, **params):
+        statistic = params.pop("statistic", None)
+        if statistic not in _SUMMARY_STATS:
+            raise ValueError(
+                f"{type(self).__name__}: 'statistic' must be one of "
+                f"{list(_SUMMARY_STATS)}; got {statistic!r}."
+            )
+        self.statistic = statistic
+        log_key = params.pop("log_key", None)
+        log_path = params.pop("log_path", None)
+        self.log_key = log_key or f"{type(self).__name__}_{statistic}"
+        # whatever's left in params are dependency_cls's own constructor kwargs
+        self.wrapped = manager.build(self.dependency_cls, manager, **params)
+        super().__init__(manager, log_path=log_path, should_run=should_run)
+
+    def _run(self):
+        info = self.wrapped.run().info
+        values = info[self.info_key] if self.info_key is not None else info
+        if values is None:
+            # Some diagnostics can legitimately return None scores in early epochs
+            return DiagnosticInfo(self.log_key, {}) 
+        value = _SUMMARY_STATS[self.statistic](values)
+        return DiagnosticInfo(self.log_key, {self.log_key: value})
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, type(self))
+            and self.wrapped == other.wrapped
+            and self.statistic == other.statistic
+        )
 
 
 class DiagnosticsManager:
