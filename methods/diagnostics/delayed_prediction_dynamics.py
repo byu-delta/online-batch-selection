@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from methods.diagnostics.base import Diagnostic, DiagnosticInfo, LogType, Summary
 from methods.diagnostics.standard import ForwardPass, PerSampleLossError
 
-class _PerSampleProgress(Diagnostic):
+class _ProjectionProgress(Diagnostic):
     def __init__(self, manager, loader_key, label_source):
         self.loader_key = loader_key
         self.label_source = label_source
@@ -47,13 +47,13 @@ class _PerSampleProgress(Diagnostic):
 
     def __eq__(self, other):
         return (
-            isinstance(other, _PerSampleProgress)
+            isinstance(other, _ProjectionProgress)
             and self.loader_key == other.loader_key
             and self.label_source == other.label_source
         )
 
-class PerSampleProgressSummary(Summary):
-    dependency_cls = _PerSampleProgress
+class ProjectionProgressSummary(Summary):
+    dependency_cls = _ProjectionProgress
     info_key = "progress"
 
 class _PerSampleVolatility(Diagnostic):

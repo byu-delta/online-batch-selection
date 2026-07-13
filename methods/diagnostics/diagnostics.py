@@ -27,7 +27,7 @@ POST_BATCH_DIAGNOSTICS = {
     "Checkpoint": Checkpoint,
     "MinibatchScoresSummary": MinibatchScoresSummary,
     "TrainingState": TrainingState,
-    "PerSampleProgressSummary": PerSampleProgressSummary,
+    "ProjectionProgressSummary": ProjectionProgressSummary,
     "PerSampleVolatilitySummary": PerSampleVolatilitySummary,
 }
 EPOCH_END_DIAGNOSTICS = {
