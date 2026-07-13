@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from methods.diagnostics.base import Diagnostic, DiagnosticInfo, LogType, Summary
 from methods.diagnostics.standard import ForwardPass, PerSampleLossError
 
-class PerSampleProgress(Diagnostic):
+class _PerSampleProgress(Diagnostic):
     def __init__(self, manager, loader_key, label_source):
         self.loader_key = loader_key
         self.label_source = label_source
@@ -47,13 +47,13 @@ class PerSampleProgress(Diagnostic):
 
     def __eq__(self, other):
         return (
-            isinstance(other, PerSampleProgress)
+            isinstance(other, _PerSampleProgress)
             and self.loader_key == other.loader_key
             and self.label_source == other.label_source
         )
 
 class PerSampleProgressSummary(Summary):
-    dependency_cls = PerSampleProgress
+    dependency_cls = _PerSampleProgress
     info_key = "progress"
 
 class _PerSampleVolatility(Diagnostic):
@@ -61,6 +61,25 @@ class _PerSampleVolatility(Diagnostic):
         self.loader_key = loader_key
         self.label_source = label_source
         self.forward_pass = manager.build(ForwardPass, manager, loader_key)
+        self.last_log_probs = None
         super().__init__(manager)
     
+    def _run(self):
+        fp = self.forward_pass.run().info
+        log_probs = fp["log_probs"]
+
+        name = "per sample prediction volatility"
+        # Cannot compute volatility on the first time we see predictions
+        if self.last_log_probs is None:
+            self.last_log_probs = log_probs
+            return DiagnosticInfo(name, None)
+        
+        kl_divs = F.kl_div(log_probs, self.last_log_probs, reduction="none", log_target=True)
+        
+        return DiagnosticInfo(name, kl_divs)
     
+    def __eq__(self, other):
+        return isinstance(other, _PerSampleVolatility)
+    
+class PerSampleVolatilitySummary(Summary):
+    dependency_cls = _PerSampleVolatility

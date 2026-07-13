@@ -1,9 +1,9 @@
 """Logging schedule.
 
-Ports the old ``DiagnosticsLogger._build_logarithmic_steps`` / ``should_log`` into
-a small object usable as a diagnostic's ``should_run(state)`` predicate. The
-``logarithmic`` schedule logs densely early (sub-epoch) and sparsely later;
-``per_epoch`` logs only at the last batch of each epoch.
+Ports the old `DiagnosticsLogger._build_logarithmic_steps` / `should_log` into
+a small object usable as a diagnostic's `should_run(state)` predicate. The
+`logarithmic` schedule logs densely early (sub-epoch) and sparsely later;
+`per_epoch` logs only at the last batch of each epoch.
 """
 
 import numpy as np
@@ -46,9 +46,9 @@ class LogSchedule:
         return set(steps)
 
     def __contains__(self, state):
-        """Allow ``state in schedule`` and use as ``should_run``."""
+        """Allow `state in schedule` and use as `should_run`."""
         if self.log_interval == "per_epoch":
-            return state.batch_idx == self.last_batch_idx
+            return (state.batch_idx % state.total_batches) == self.last_batch_idx
         return state.total_steps in self.steps
 
     def __call__(self, state):

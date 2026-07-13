@@ -28,6 +28,7 @@ POST_BATCH_DIAGNOSTICS = {
     "MinibatchScoresSummary": MinibatchScoresSummary,
     "TrainingState": TrainingState,
     "PerSampleProgressSummary": PerSampleProgressSummary,
+    "PerSampleVolatilitySummary": PerSampleVolatilitySummary,
 }
 EPOCH_END_DIAGNOSTICS = {
     "SelectedPoints": SelectedPoints,

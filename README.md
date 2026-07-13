@@ -213,6 +213,20 @@ A metric's W&B key can be overridden, e.g. on a noisy dataset:
     log_key: noisy_train_loss
 ```
 
+Summary diagnostics (e.g. `MinibatchScoresSummary`, `PerSampleProgressSummary`,
+`PerSampleVolatilitySummary`) reduce a wrapped diagnostic's values via a named
+`statistic` (`mean`, `median`, `min`, `max`, `std`). `statistic` can be a
+single name or a list, logging one key per statistic as `<log_key>_<stat>`:
+
+```yaml
+- MinibatchScoresSummary:
+    statistic: [mean, median, std, min, max]
+```
+
+is equivalent to five separate `MinibatchScoresSummary` entries, one per
+statistic, logged as `MinibatchScoresSummary_mean`,
+`MinibatchScoresSummary_median`, etc.
+
 ---
 
 ## 7. Submitting batch jobs to SLURM
