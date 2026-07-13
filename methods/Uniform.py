@@ -38,11 +38,11 @@ class Uniform(SelectionMethod):
             raise NotImplementedError
 
         
-    def before_batch(self, i, inputs, targets, indexes, epoch):
+    def before_batch(self, i, inputs, targets, indexes):
         if self.balance:
-            ratio = self.get_ratio_per_epoch(epoch)
+            ratio = self.get_ratio_per_epoch(self._current_epoch)
             if i == 0:
-                self.logger.info(f'selecting samples for epoch {epoch}')
+                self.logger.info(f'selecting samples for epoch {self._current_epoch}')
                 self.logger.info(f'balance: {self.balance}')
                 self.logger.info(f'ratio: {ratio}')
             all_indices = np.array([], dtype=np.int64)
@@ -53,9 +53,9 @@ class Uniform(SelectionMethod):
                 all_indices = np.append(all_indices, selected_indices)
             return inputs[all_indices], targets[all_indices], indexes[all_indices]
         else:
-            ratio = self.get_ratio_per_epoch(epoch)
+            ratio = self.get_ratio_per_epoch(self._current_epoch)
             if i == 0:
-                self.logger.info(f'selecting samples for epoch {epoch}')
+                self.logger.info(f'selecting samples for epoch {self._current_epoch}')
                 self.logger.info(f'balance: {self.balance}')
                 self.logger.info(f'ratio: {ratio}')
             num_samples = int(inputs.shape[0] * ratio)

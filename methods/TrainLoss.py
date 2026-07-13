@@ -48,16 +48,16 @@ class TrainLoss(SelectionMethod):
         self.model.train()
         return index_selected.cpu().numpy()
         
-    def before_batch(self, i, inputs, targets, indexes, epoch):
-        ratio = self.get_ratio_per_epoch(epoch)
+    def before_batch(self, i, inputs, targets, indexes):
+        ratio = self.get_ratio_per_epoch(self._current_epoch)
         if ratio == 1.0:
             if i == 0:
                 self.logger.info('using all samples')
-            return super().before_batch(i, inputs, targets, indexes, epoch)
+            return super().before_batch(i, inputs, targets, indexes)
         else:
             if i == 0:
                 self.logger.info(f'balance: {self.balance}')
-                self.logger.info('selecting samples for epoch {}, ratio {}'.format(epoch, ratio))
+                self.logger.info('selecting samples for epoch {}, ratio {}'.format(self._current_epoch, ratio))
         number_to_select = int(inputs.shape[0] * ratio)
         indices = self.trainloss_selection(inputs, targets, number_to_select)
         inputs = inputs[indices]

@@ -1,12 +1,12 @@
 """Concrete diagnostics, decomposed into cached compute dependencies
 and small logged leaves wired by the dependency mechanism.
 
-Layer 1 (compute deps, unregistered, never logged):
+Compute deps, unregistered, never logged:
   ForwardPass(loader)        -- one model pass over a loader, shared by all metrics
   PerSampleLossError(loader, label_source)
-Layer 2 (logged leaves, registered with a manager):
+Logged leaves, registered with a manager:
   TrainLoss/TrainAcc/ValLoss/ValAcc, TrueLabel*{Loss,Acc}, LogitNormL2,
-  Checkpoint, SelectedPoints
+  Checkpoint, SelectedPoints, TrainingState, Timing
 """
 
 import os
@@ -295,6 +295,23 @@ class Timing(Diagnostic):
 
     def __eq__(self, other):
         return isinstance(other, Timing)
+
+class TrainingState(Diagnostic):
+    """Logs the current epoch, current step, and batch index"""
+
+    def __init__(self, manager, should_run=None, **params):
+        super().__init__(manager, log_path=params.get("log_path"), should_run=should_run)
+    
+    def _run(self):
+        state = self.get_state()
+        return DiagnosticInfo("training_state", {
+            "epoch": state.epoch,
+            "batch_idx": state.batch_idx,
+            "total_steps": state.total_steps,
+        })
+        
+    def __eq__(self, other):
+        return isinstance(other, TrainingState)
 
 
 _SCORE_STATS = {

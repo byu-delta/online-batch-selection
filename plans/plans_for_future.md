@@ -1,2 +1,0 @@
-- Nomenclature: make names not just unique, but also readable
-- Checkpointing: make it so jobs can be preemptible

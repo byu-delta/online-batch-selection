@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shlex
 from tqdm import tqdm
 import subprocess
@@ -19,7 +20,9 @@ def run_job(
         time: str = '1:00:00',
         name: str = 'online-bs',
         preemptible=True,
-        download=True
+        download=True,
+        wandb_upload=False,
+        hide_slurm_id=False, # Allows one to run jobs on a slurm allocation with RunType.NORMAL without causing jobs to resume
     ):
     if download:
         download_cmd = ["python", "perform_downloads.py", "--method", config_path]
@@ -31,15 +34,18 @@ def run_job(
 
     python_cmd = ["python", "main.py", "--config", config_path]
 
+    if not wandb_upload:
+        python_cmd.append("--wandb_not_upload")
+
     if run_type == RunType.DRY:
         tqdm.write(f'Dry run. Would have run `{python_cmd}`')
 
     if run_type == RunType.NORMAL:
-        subprocess.run(python_cmd, check=True)
+        env = None
+        if hide_slurm_id:
+            env = {k: v for k, v in os.environ.items() if k != "SLURM_JOB_ID"}
+        subprocess.run(python_cmd, check=True, env=env)
         return
-    
-    # Compute nodes don't have internet
-    python_cmd.append("--wandb_not_upload")
 
     slurm_flags = [
         "--gres=gpu:1",
