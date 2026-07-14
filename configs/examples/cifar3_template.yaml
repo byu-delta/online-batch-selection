@@ -1,15 +1,14 @@
-# Basic baseline config: CIFAR3 + ResNet18 + Uniform@1.0.
-# Diagnostics: train/val loss+acc snapshots + timing.
+# Config template to be used with `generate_configs.py`. Trains a ResNet model
+# on CIFAR3 (dog, cat, bird) using a ResNet model using Uniform batch selection.
+# Searches over learning rates.
 
 run_name_format:
-  - run
+  - example
   - $dataset.name
-  - $method
   - $training_opt.optimizer
   - lr: [$training_opt.optim_params.lr]
-  - $training_opt.loss_type
 
-seed: 1
+seed: __REQUIRED__ # To be set to an int
 
 dataset:
   name: CIFAR3
@@ -26,12 +25,12 @@ networks:
 
 training_opt:
   num_epochs: 100
-  num_data_workers: 4
+  num_data_workers: 1
   batch_size: 320
   test_batch_size: 512
-  optimizer: SGD
+  optimizer: __REQUIRED__ # To be set as SGD or AdamW
   optim_params:
-    lr: 0.01
+    lr: __REQUIRED__ # To be set to a float
     weight_decay: 0.0005
   scheduler_params: {}
   scheduler: 'constant'
@@ -40,7 +39,7 @@ training_opt:
 
 method: Uniform
 method_opt:
-  ratio: 1.0
+  ratio: 0.1
   balance: False
   ratio_scheduler: constant
   warmup_epochs: 0
@@ -51,13 +50,13 @@ diagnostics:
     save_init: 5
     save_freq: 4
   diagnostics:
-    - TrainLoss: {}
-    - TrainAcc: {}
-    - ValLoss: {}
-    - ValAcc: {}
-    - Timing: {}
-    - Checkpoint: {}
+    - TrainLoss
+    - TrainAcc
+    - ValLoss
+    - ValAcc
+    - Timing
+    - Checkpoint
 
 wandb:
-  project: "Template"
+  project: "Example" 
   mode: online

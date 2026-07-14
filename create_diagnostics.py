@@ -94,7 +94,10 @@ def _parse_diagnostics_list(requested):
             cls_name, params = entry, {}
         else:
             cls_name = next(iter(entry))
-            params = dict(entry[cls_name] or {})
+            params = entry[cls_name]
+            if isinstance(params, list):
+                raise ValueError(r'Expected dictionary entries, not a list')
+            params = dict(params or {})
         if type_counts[cls_name] > 1:
             n = seen.get(cls_name, 0)
             log_name = f"{cls_name}_{n}"

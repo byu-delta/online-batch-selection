@@ -5,7 +5,7 @@ import math
 from .initialization import initialize_weights
 
 
-def create_model(m_type='linear', input_dim=[1,1,10], num_classes=10, pretrained=False, *, activation=nn.Identity(), **kwargs):
+def create_model(m_type='deep_linear', input_dim=[1,1,10], num_classes=10, pretrained=False, *, activation=nn.Identity(), **kwargs):
     input_dim_scalar = math.prod(input_dim)
 
     if 'hidden_dims' in kwargs and ('num_hidden_layers' in kwargs or 'hidden_dim' in kwargs):

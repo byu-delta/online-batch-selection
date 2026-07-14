@@ -1,5 +1,7 @@
 import yaml
 import os
+# Set CUDA variable to ensure reproducibility. See https://docs.nvidia.com/cuda/cublas/#results-reproducibility
+os.environ.setdefault('CUBLAS_WORKSPACE_CONFIG', ':4096:8')
 import argparse
 import torch
 import torch.nn as nn
@@ -103,9 +105,9 @@ def init_seeds(seed):
     torch.cuda.manual_seed(seed)
     if torch.cuda.device_count() > 1:
         torch.cuda.manual_seed_all(seed) 
-    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
 
 
 def main():

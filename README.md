@@ -27,7 +27,7 @@ repository root.
 `main.py` takes **one merged YAML config** via `--config`:
 
 ```bash
-python main.py --config template_configs/cifar3_rholoss.yaml
+python main.py --config configs/examples/cifar3_template.yaml
 ```
 
 Common flags:
@@ -53,7 +53,7 @@ To run interactively on a P100 node:
 ```bash
 salloc -C pascal --time=1:00:00 --ntasks=1 --nodes=1 --gpus=1 --mem=8000M
 mamba activate online-bs-p100
-python main.py --config template_configs/makeblobs_basic.yaml --wandb_not_upload
+python main.py --config configs/examples/makeblobs_antipodal.yaml --wandb_not_upload
 ```
 
 ---
@@ -120,9 +120,12 @@ wandb:                       # passed to wandb.init(); --wandb_not_upload overri
   mode: online               # online | offline | disabled
 ```
 
-Ready-to-run example configs live in `template_configs/` (e.g. `cifar3_rholoss.yaml`,
-`makeblobs_basic.yaml`, `mnist_basic.yaml`, `cifar10_basic.yaml`,
-`teacher_generated_basic.yaml`).
+Ready-to-run example configs live in `configs/examples/` (e.g. `cifar3_template.yaml`,
+`makeblobs_antipodal.yaml`, `mnist_noise.yaml`) — that subfolder is tracked in
+git, so it should only hold examples meant to be shared. Your own configs
+(personal sweeps, one-offs, scratch edits) go directly in `configs/`: the rest
+of that folder is git-ignored, so anything there stays local. Copy an example
+in and edit it rather than editing the example in place.
 
 ---
 
@@ -157,28 +160,27 @@ Sweeps use a **template config** plus `generate_configs.py`. A template is a
 normal merged config with some leaves set to the sentinel `__REQUIRED__`:
 
 ```yaml
-# template_configs/cifar3_deep_linear_template.yaml (excerpt)
+# configs/examples/cifar3_template.yaml (excerpt)
 seed: __REQUIRED__
-method: __REQUIRED__
 training_opt:
+  optimizer: __REQUIRED__
   optim_params: { lr: __REQUIRED__ }
-networks:
-  params: { num_hidden_layers: __REQUIRED__ }
 ```
 
 A submission script fills every `__REQUIRED__` leaf over the Cartesian product of
-value lists, writing one concrete config per combination into `./configs-temp/`:
+value lists, writing one concrete config per combination into `./.configs-temp/`.
+See `run/examples/run_from_config_template.py` for a working example:
 
 ```python
-# run_cifar_3_deep_linear.py (excerpt)
-from generate_configs import generate_configs
+from run_utils import run_job, RunType, generate_configs
 
+TEMPLATE = "configs/examples/cifar3_template.yaml"
 PARAMS_TO_VARY = {
     "seed": [1, 2, 3],                       # seed is swept like any other key
-    "method": ["RhoLoss"],
-    "networks.params.num_hidden_layers": [3],
+    "training_opt.optimizer": ["SGD", "AdamW"],
+    "training_opt.optim_params.lr": [0.001, 0.01, 0.1],
 }
-config_paths = generate_configs("template_configs/cifar3_deep_linear_template.yaml", PARAMS_TO_VARY)
+config_paths = generate_configs(TEMPLATE, PARAMS_TO_VARY)
 ```
 
 Rules: every key in `PARAMS_TO_VARY` must be `__REQUIRED__` in the template, and
@@ -190,19 +192,89 @@ raises). Generated filenames encode the varied values, e.g.
 
 ## 6. Diagnostics
 
+### 6.1 Config format
+
 The `diagnostics.diagnostics` block is a **list** of leaves to log. Each entry
 is either a bare class name (`- TrainLoss`) or a single-key dict with params
-(`- MinibatchScores: {statistic: mean}`). Using a list allows the same class to
-appear multiple times with different params. Available leaves include:
+(`- MinibatchScoresSummary: {statistic: mean}`). Using a list allows the same
+class to appear multiple times with different params (a plain YAML mapping
+would silently drop duplicate keys).
 
-- **Snapshots:** `TrainLoss`, `TrainAcc`, `ValLoss`, `ValAcc`
-  (and `TrueLabelTrainLoss`/`TrueLabelTrainAcc` for clean-label metrics on noisy data)
-- **`Timing`** — wall-clock `total_time` / `time_this_epoch` (epoch end)
-- **`Progress`** — geodesic progress of predictions toward the labels
-- **`LogitNormL2`**, **`ParamNorms`**, **`GradNorms`**, **`WeightMatrixNorms`**
-- **`LinearProbe`**, **`NTK`** (heavier; take `params`)
-- **`Checkpoint`** — rolling + best checkpoint (needed to resume / track best acc)
-- **`SelectedPoints`** — noisy-selection stats (epoch end)
+### 6.2 How the list is built (`create_diagnostics.py`)
+
+`create_diagnostics(method, ...)` reads `config["diagnostics"]["diagnostics"]`
+and, for each entry:
+
+1. Looks up the class name in one of three registries
+   (`methods/diagnostics/diagnostics.py`): `POST_BATCH_DIAGNOSTICS`,
+   `EPOCH_END_DIAGNOSTICS`, or `TRAIN_END_DIAGNOSTICS` — an unknown name
+   raises. Each registry feeds a separate `DiagnosticsManager`, one per
+   training phase:
+   - **`POST_BATCH`** — driven after every training batch
+     (`SelectionMethod.after_batch` → `_run_post_batch_diagnostics`), subject
+     to a shared logging schedule (below).
+   - **`EPOCH_END`** — driven after every epoch (`SelectionMethod.after_epoch`);
+     always runs (`should_run=lambda state: True`), not schedule-gated.
+   - **`TRAIN_END`** — driven once, after training finishes
+     (`SelectionMethod.after_run` → `diagnostics.finalize()`).
+2. Instantiates the diagnostic with its config params plus a `log_path`
+   (`logs/<log_name>.log`), where `log_name` is the class name, suffixed
+   `_0`, `_1`, … if the same class appears more than once in the list.
+3. Registers it with its phase's manager.
+
+Diagnostics form a dependency DAG rather than each computing everything from
+scratch: a diagnostic's `_run` calls `.run()` on its dependencies (e.g. a
+shared `ForwardPass` or `PerSampleLossError`), and `DiagnosticsManager.build`
+(`methods/diagnostics/base.py`) deduplicates — two leaves that request an
+equal dependency (same class + same constructor args, via `__eq__`) share one
+instance, computed once per `TrainState` and cached (`Diagnostic.run`,
+`base.py:97`) rather than once per leaf.
+
+### 6.3 Logging schedule
+
+Post-batch diagnostics share one `LogSchedule` (`methods/diagnostics/schedule.py`),
+built from `diagnostics.logging_defaults`:
+
+```yaml
+diagnostics:
+  logging_defaults:
+    log_interval: logarithmic   # or "per_epoch"
+    save_init: 5                # first N epochs: log densely (see below)
+    save_freq: 4                 # subdivisions per epoch during save_init
+```
+
+- **`logarithmic`** (default): logs densely for the first `save_init` epochs
+  (every `total_batches // save_freq` batches), then once per epoch through
+  epoch 25, every 4th epoch through 65, and every 15th epoch after that (plus
+  always the final epoch and step 0).
+- **`per_epoch`**: logs only on the last batch of each epoch
+  (`state.batch_idx == total_batches - 1`), ignoring `save_init`/`save_freq`.
+
+Epoch-end and train-end diagnostics aren't gated by `LogSchedule` at all —
+epoch-end always fires at epoch end, train-end fires once at the very end.
+
+### 6.4 Available leaves
+
+- **Snapshots (post batch):** `TrainLoss`, `TrainAcc`, `ValLoss`, `ValAcc`
+  (and `TrueLabelTrainLoss`/`TrueLabelTrainAcc` for clean-label metrics on
+  noisy data)
+- **`TrainProgress`, `ValProgress`** (post batch) — geodesic progress of
+  predictions toward the labels
+- **`LogitNormL2`, `ParamNorms`, `GradNorms`, `WeightMatrixNorms`** (post batch)
+- **`LinearProbe`, `NTK`** (post batch; heavier, take `params`)
+- **`Checkpoint`** (post batch) — rolling + best checkpoint (needed to resume
+  / track best acc)
+- **`TrainingState`** (post batch) — logs `epoch`/`batch_idx`/`total_steps`
+- **`MinibatchScoresSummary`** (post batch) — summary of the current
+  minibatch's selection scores
+- **`PerSampleProgressSummary`, `PerSampleVolatilitySummary`** (post batch,
+  DPD diagnostics) — summary of per-sample prediction progress / volatility
+  on a held-out loader
+- **`Timing`** (epoch end) — wall-clock `total_time` / `time_this_epoch`
+- **`SelectedPoints`, `SelectedPointsSummary`** (epoch end) — noisy-selection
+  stats
+- **`WStarTestAcc`, `WHatTestAcc`, `BayesAccAntipodalGaussian`** (train end)
+  — final learned-parameter-recovery metrics (antipodal-Gaussian setups)
 
 A metric's W&B key can be overridden, e.g. on a noisy dataset:
 
@@ -211,27 +283,47 @@ A metric's W&B key can be overridden, e.g. on a noisy dataset:
     log_key: noisy_train_loss
 ```
 
+Summary diagnostics (e.g. `MinibatchScoresSummary`, `PerSampleProgressSummary`,
+`PerSampleVolatilitySummary`) reduce a wrapped diagnostic's values via a named
+`statistic` (`mean`, `median`, `min`, `max`, `std`). `statistic` can be a
+single name or a list, logging one key per statistic as `<log_key>_<stat>`:
+
+```yaml
+- MinibatchScoresSummary:
+    statistic: [mean, median, std, min, max]
+```
+
+is equivalent to five separate `MinibatchScoresSummary` entries, one per
+statistic, logged as `MinibatchScoresSummary_mean`,
+`MinibatchScoresSummary_median`, etc.
+
 ---
 
 ## 7. Submitting batch jobs to SLURM
 
-Tracked example submission scripts live in **`template_run/`**; they
-generate/select configs and submit one `sbatch` job each. Run them **from the
-repo root** with the environment active:
+Tracked example submission scripts live in **`run/examples/`**; they
+generate/select configs and submit one job each via `run_utils.run_job`
+(`run/run_utils/`, also tracked since the examples import it). **Copy one into `run/` first**, then run it from there:
 
 ```bash
-python template_run/run_basic.py                # basic single-dataset baselines
-python template_run/run_cifar_3_deep_linear.py  # templated CIFAR3 sweep
+cp run/examples/run_from_configs.py run/
+python run/run_from_configs.py
 ```
 
-For your own ad-hoc/WIP sweeps, copy one into **`run/`** — that folder is
-tracked but its contents are git-ignored, so personal scripts stay local.
+Both examples default to `RunType.DRY` (prints what would run without
+submitting) — change the `RUN_TYPE` constant at the top of the copied script
+to `NORMAL`, `SBATCH`, or `SRUN` to actually run.
+
+For your own ad-hoc/WIP sweeps, likewise copy a config from **`configs/examples/`**
+into **`configs/`** itself and edit from there. `run/` and `configs/` are
+tracked folders, but everything in them is git-ignored except the `examples/`
+(and `run/run_utils/`) subfolders, so personal scripts and configs stay local
+while the examples they were copied from stay clean for others to reuse.
 
 Each submitted job requests a GPU and `--requeue`, so a preempted job lands back
 in the **same** run directory and resumes from its rolling checkpoint. SLURM
 stdout/stderr go to `logs/slurm/%j.{out,err}` and are symlinked into the run
-dir. Set `USE_SLURM = False` at the top of a script to run locally instead of
-submitting.
+dir.
 
 To resume / extend a finished run, point a config's `resume.from` at an existing
 run directory (optionally with `resume.additional_epochs`).
@@ -250,11 +342,15 @@ run directory (optionally with `resume.additional_epochs`).
   `data/__init__.py` (CIFAR3/10/100, MNIST/FashionMNIST, TinyImageNet, MakeBlobs,
   Teacher_Generated, and `*_Noise` variants).
 - **`models/`** — model definitions (ResNet, LeNet, Linear, DeepLinear, TwoLayer).
-- **`template_configs/`** — tracked ready-to-run configs and sweep templates; **`configs/`** — local/WIP configs (contents git-ignored).
+- **`configs/examples/`** — tracked ready-to-run configs and sweep templates;
+  rest of **`configs/`** — your local/WIP configs (git-ignored). Copy an
+  example out of `examples/` before editing.
 - **`run_dir.py`** — run-name rendering, atomic run-dir creation, resume plumbing.
-- **`generate_configs.py`** — template → concrete configs for sweeps.
-- **`template_run/`** — tracked example SLURM submission scripts;
-  **`run/`** — your local/WIP submission scripts (contents git-ignored).
+- **`run/run_utils/generate_configs.py`** — template → concrete configs for sweeps.
+- **`run/examples/`** and **`run/run_utils/`** — tracked example SLURM
+  submission scripts and the package they import; rest of **`run/`** — your
+  local/WIP submission scripts (git-ignored). Copy an example out of
+  `examples/` into `run/` before editing/running it.
 - **`experiments/`** — run outputs (git-ignored).
 
 ---
