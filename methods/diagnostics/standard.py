@@ -207,12 +207,6 @@ class Checkpoint(Diagnostic):
         self.best_epoch = int(self.method.best_epoch)
         self.is_best = False
 
-        # Todd's addition for a specific test. Save's the first checkpoint that goes about the progress threshold.
-        self.save_specific_progress = bool(params.get("save_specific_progress", False))
-        self.progress_threshold = float(params.get("progress_threshold", 0.0))
-        self.progress_manager = manager.build(Progress, manager)
-        self.progress_saved = False
-
     def _run(self):
         state = self.get_state()
         val_acc = float(1.0 - self.val_acc.run().info["error"].mean().item())
@@ -230,22 +224,7 @@ class Checkpoint(Diagnostic):
             if self.is_best and self.save_best:
                 shutil.copyfile(self.checkpoint_path, self.best_path)
 
-            # Todd's addition for a specific test. Saves the current progress and checkpoint if the progress threshold is met and it hasn't been saved yet.
-            if self.save_specific_progress and not self.progress_saved:
-                progress = self.progress_manager.run().info["val_progress"]
-
-                if progress >= self.progress_threshold:
-                    specific_progress_path = os.path.join(
-                        self.snapshots_dir,
-                        f"progress-{self.progress_threshold:.4f}_epoch-{state.epoch}.pth.tar"
-                    )
-                    shutil.copyfile(self.checkpoint_path, specific_progress_path)
-                    self.progress_saved = True
-
         return DiagnosticInfo("checkpoint", {"best_val_acc": self.best_acc})
-
-    def __eq__(self, other):
-        return isinstance(other, Checkpoint)
 
     def __eq__(self, other):
         return isinstance(other, Checkpoint)
