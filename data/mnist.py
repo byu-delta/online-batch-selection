@@ -113,7 +113,7 @@ def MNIST(config, logger):
     mean = [0.1307]
     std = [0.3081]
 
-    transform = transforms.Compose(
+    augmented_transform = transforms.Compose(
         [transforms.RandomCrop(im_size, padding=4, padding_mode="reflect"),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
@@ -125,18 +125,23 @@ def MNIST(config, logger):
         transforms.Normalize(mean=mean, std=std)]
         )
 
-    test_transform =  transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)]) if im_size[0] == 28 else transforms.Compose(
+    transform =  transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)]) if im_size[0] == 28 else transforms.Compose(
         [transforms.Resize(im_size),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std)]
         )
     
+    if config['dataset'].get('augment_train', False):
+        train_transform = augmented_transform
+    else:
+        train_transform = transform
+
     dst_train = datasets.MNIST(
-        config['dataset']['root'], train=True, download=True, transform= transform
+        config['dataset']['root'], train=True, download=True, transform= train_transform
     )
     
     
-    dst_test = datasets.MNIST(config['dataset']['root'], train=False, download=True, transform=test_transform)
+    dst_test = datasets.MNIST(config['dataset']['root'], train=False, download=True, transform=transform)
     # class_names = dst_train.classes
     # dst_train.targets = torch.tensor(dst_train.targets, dtype=torch.long)
     # dst_test.targets = torch.tensor(dst_test.targets, dtype=torch.long)
@@ -158,7 +163,7 @@ def MNIST_Noise(config, logger):
     mean = [0.1307]
     std = [0.3081]
 
-    transform = transforms.Compose(
+    augmented_transform = transforms.Compose(
         [transforms.RandomCrop(im_size, padding=4, padding_mode="reflect"),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
@@ -170,17 +175,22 @@ def MNIST_Noise(config, logger):
         transforms.Normalize(mean=mean, std=std)]
         )
 
-    test_transform =  transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)]) if im_size[0] == 28 else transforms.Compose(
+    transform =  transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)]) if im_size[0] == 28 else transforms.Compose(
         [transforms.Resize(im_size),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std)]
         )
 
+    if config['dataset'].get('augment_train', False):
+        train_transform = augmented_transform
+    else:
+        train_transform = transform
+
     dst_train = datasets.MNIST(
-        config['dataset']['root'], train=True, download=True, transform= transform
+        config['dataset']['root'], train=True, download=True, transform= train_transform
     )
 
-    dst_test = datasets.MNIST(config['dataset']['root'], train=False, download=True, transform=test_transform)
+    dst_test = datasets.MNIST(config['dataset']['root'], train=False, download=True, transform=transform)
 
     return _build_dataset_info(
         config=config,

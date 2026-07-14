@@ -23,6 +23,7 @@ def run_job(
         download=True,
         wandb_upload=False,
         hide_slurm_id=False, # Allows one to run jobs on a slurm allocation with RunType.NORMAL without causing jobs to resume
+        experiments_dir="./experiments"
     ):
     if download:
         download_cmd = ["python", "perform_downloads.py", "--method", config_path]
@@ -32,7 +33,7 @@ def run_job(
             # Perform necessary downloads
             subprocess.run(download_cmd, check=True)
 
-    python_cmd = ["python", "main.py", "--config", config_path]
+    python_cmd = ["python", "main.py", "--config", config_path, "--experiments_dir", experiments_dir]
 
     if not wandb_upload:
         python_cmd.append("--wandb_not_upload")
