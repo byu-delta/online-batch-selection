@@ -196,7 +196,7 @@ class SelectionMethod(object):
         self.total_step = int(getattr(self, 'total_step', 0))
         self._last_minibatch_scores = None
         self._current_checkpoint_state = None
-        self.save_checkpoint(self._build_checkpoint_state(self.start_epoch), False, filename='initial_model.pth.tar')
+        self.save_checkpoint(self._build_checkpoint_state(), False, filename='initial_model.pth.tar')
 
     def before_epoch(self):
         # reset the per-epoch selected-point mask, then select samples
