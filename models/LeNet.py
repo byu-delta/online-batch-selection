@@ -1,15 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .initialization import initialize_weights
 
 
 def create_model(m_type='lenet', in_channels=1, num_classes=10, pretrained=False, dropout=0, **kwargs):
-    model = lenet(in_channels=in_channels, num_classes=num_classes)
+    model = lenet(in_channels=in_channels, num_classes=num_classes, **kwargs)
     return model
 
 
 class lenet(nn.Module):
-    def __init__(self, in_channels=1, num_classes=10):
+    def __init__(self, in_channels=1, num_classes=10, init_weights_func=None, **kwargs):
         super(lenet, self).__init__()
 
         self.conv1 = nn.Conv2d(in_channels, 6, kernel_size=5)
@@ -17,6 +18,10 @@ class lenet(nn.Module):
         self.fc1 = nn.Linear(16 * 5 * 5, 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
+
+        # Initialize weights using the specified initialization function. If none is provided, use the default initialization.
+        print(f"Initializing weights using: {init_weights_func}")
+        initialize_weights(self, init_weights_func)
 
     def forward(self, x, **kwargs):
         feature = kwargs.get('need_features', False)
