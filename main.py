@@ -153,7 +153,7 @@ def main():
     method = config['method']
 
     if method not in methods.__all__:
-        raise ValueError(f'Method {method} is not supported. Please check the methods.py file.')
+        raise ValueError(f'Method {method} is not supported. Please check the methods/__init__.py file.')
 
     resume_state = _configure_resume_state(run_mode, run_dir, run_info, config)
 

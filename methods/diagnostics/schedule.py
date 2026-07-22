@@ -19,7 +19,7 @@ class LogSchedule:
         self.save_freq = int(save_freq)
         self.last_batch_idx = self.total_batches - 1
         if log_interval not in {"logarithmic", "per_epoch"}:
-            log_interval = "logarithmic"
+            raise NotImplementedError(f"{log_interval=} has not been implement. Please review methods/diagnostics/schedule.py")
         self.log_interval = log_interval
         self.steps = self._build_logarithmic_steps() if log_interval == "logarithmic" else None
 
