@@ -223,7 +223,7 @@ class LogProbs(Diagnostic):
         self.train_forward_pass = manager.build(ForwardPass, manager, "train",)
         self.val_forward_pass = manager.build(ForwardPass, manager, "val",)
         self.training_state = manager.build(TrainingState, manager, **params)
-        self.progress_snapshots_dir = os.path.join(self.method.config["save_dir"], "log_probs")
+        self.progress_snapshots_dir = os.path.join(self.method.config["save_dir"], "/logs/log_probs")
         os.makedirs(self.progress_snapshots_dir, exist_ok=True)
     
 
@@ -236,7 +236,6 @@ class LogProbs(Diagnostic):
         val_log_probs = val_fp["log_probs"]
         total_steps = model_state["total_steps"]
 
-        # Convert tensors to NumPy arrays.
         train_log_probs = (train_log_probs.detach().cpu())
         val_log_probs = (val_log_probs.detach().cpu())
 
