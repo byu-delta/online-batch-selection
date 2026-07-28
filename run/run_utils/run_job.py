@@ -26,7 +26,8 @@ def run_job(
         download=True,
         wandb_upload=False,
         hide_slurm_id=False, # Allows one to run jobs on a slurm allocation with RunType.NORMAL without causing jobs to resume
-        experiments_dir="."
+        experiments_dir=".",
+        exclude_nodes=None
     ):
     if download:
         download_cmd = ["python", "perform_downloads.py", "--method", config_path]
