@@ -29,6 +29,7 @@ POST_BATCH_DIAGNOSTICS = {
     "TrainingState": TrainingState,
     "ProjectionProgressSummary": ProjectionProgressSummary,
     "PerSampleVolatilitySummary": PerSampleVolatilitySummary,
+    "LogProbs": LogProbs
 }
 EPOCH_END_DIAGNOSTICS = {
     "SelectedPoints": SelectedPoints,

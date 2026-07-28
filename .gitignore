@@ -35,6 +35,7 @@ scripts/
 labels/
 snapshots/
 spectral_decay/
+plots/
 
 # AI
 CLAUDE.md

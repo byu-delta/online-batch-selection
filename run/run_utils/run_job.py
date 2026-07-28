@@ -58,6 +58,8 @@ def run_job(
         f"--time={time}",
         f"--job-name={name}",
     ]
+    if exclude_nodes is not None:
+        slurm_flags.append(f"--exclude={','.join(exclude_nodes)}")
 
     if run_type == RunType.SRUN:
         subprocess.run(["srun"] + slurm_flags + python_cmd, check=True)
