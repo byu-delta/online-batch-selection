@@ -205,7 +205,7 @@ class TrainProgress(_ProgressLeaf):
 class ValProgress(_ProgressLeaf):
     loader_key, log_key = "val", "val_progress"
 
-class ProgressSnapshot(Diagnostic):
+class LogProbs(Diagnostic):
     """Save train and validation log-probability snapshots locally.
 
     The saved snapshot has the format:
@@ -223,7 +223,7 @@ class ProgressSnapshot(Diagnostic):
         self.train_forward_pass = manager.build(ForwardPass, manager, "train",)
         self.val_forward_pass = manager.build(ForwardPass, manager, "val",)
         self.training_state = manager.build(TrainingState, manager, **params)
-        self.progress_snapshots_dir = os.path.join(self.method.config["save_dir"], "progress_snapshots")
+        self.progress_snapshots_dir = os.path.join(self.method.config["save_dir"], "log_probs")
         os.makedirs(self.progress_snapshots_dir, exist_ok=True)
     
 
@@ -238,10 +238,10 @@ class ProgressSnapshot(Diagnostic):
 
         # Convert tensors to NumPy arrays.
         train_log_probs = (train_log_probs.detach().cpu())
-        val_log_probs = (val_log_probs.detach().cpu().numpy())
+        val_log_probs = (val_log_probs.detach().cpu())
 
         snapshot = {"step": total_steps, "yh": train_log_probs, "yvh": val_log_probs}
-        self.checkpoint_path = os.path.join(self.progress_snapshots_dir, f"checkpoint_{total_steps}.pth.tar")
+        self.checkpoint_path = os.path.join(self.progress_snapshots_dir, f"log_probs_step_{total_steps}.pth.tar")
         atomic_save(lambda p: torch.save(snapshot, p), self.checkpoint_path)
 
         # I'm not sure if we really need this to return anything, but I set it to 0 and will see if it logs to wandb.
