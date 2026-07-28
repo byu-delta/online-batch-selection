@@ -205,6 +205,48 @@ class TrainProgress(_ProgressLeaf):
 class ValProgress(_ProgressLeaf):
     loader_key, log_key = "val", "val_progress"
 
+class ProgressSnapshot(Diagnostic):
+    """Save train and validation log-probability snapshots locally.
+
+    The saved snapshot has the format:
+
+        {
+            "yh":  <train log-probabilities>,
+            "yvh": <validation log-probabilities>
+        }
+
+    Both values are stored as NumPy arrays.
+    """
+
+    def __init__(self, manager, should_run=None, **params):
+        super().__init__(manager, log_path=params.get("log_path"), should_run=should_run,)
+        self.train_forward_pass = manager.build(ForwardPass, manager, "train",)
+        self.val_forward_pass = manager.build(ForwardPass, manager, "val",)
+        self.training_state = manager.build(TrainingState, manager, **params)
+        self.progress_snapshots_dir = os.path.join(self.method.config["save_dir"], "progress_snapshots")
+        os.makedirs(self.progress_snapshots_dir, exist_ok=True)
+    
+
+    def _run(self):
+        train_fp = self.train_forward_pass.run().info
+        val_fp = self.val_forward_pass.run().info
+        model_state = self.training_state.run().info
+
+        train_log_probs = train_fp["log_probs"]
+        val_log_probs = val_fp["log_probs"]
+        total_steps = model_state["total_steps"]
+
+        # Convert tensors to NumPy arrays.
+        train_log_probs = (train_log_probs.detach().cpu())
+        val_log_probs = (val_log_probs.detach().cpu().numpy())
+
+        snapshot = {"step": total_steps, "yh": train_log_probs, "yvh": val_log_probs}
+        self.checkpoint_path = os.path.join(self.progress_snapshots_dir, f"checkpoint_{total_steps}.pth.tar")
+        atomic_save(lambda p: torch.save(snapshot, p), self.checkpoint_path)
+
+        # I'm not sure if we really need this to return anything, but I set it to 0 and will see if it logs to wandb.
+        return DiagnosticInfo("progress_snapshot", 0,)   
+
 
 class Checkpoint(Diagnostic):
     """Rolling checkpoint + best-model tracking. Writes the rolling
@@ -427,3 +469,6 @@ def _to_numpy_indices(values):
     if isinstance(values, torch.Tensor):
         return values.detach().cpu().numpy().astype(np.int64, copy=False).reshape(-1)
     return np.asarray(values, dtype=np.int64).reshape(-1)
+
+
+

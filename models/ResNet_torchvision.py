@@ -37,7 +37,7 @@ def create_model(m_type='resnet101', num_classes=1000, in_channels=3, pretrained
     return model
 
 class ResNet(nn.Module):
-    def __init__(self, model, num_classes, in_channels=3, init_weights_Func=None, **kwargs):
+    def __init__(self, model, num_classes, in_channels=3, init_weights_func=None, **kwargs):
         super(ResNet, self).__init__()
         self.conv1 = nn.Conv2d(
             in_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False
