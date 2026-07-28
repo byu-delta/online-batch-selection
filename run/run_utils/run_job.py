@@ -3,7 +3,10 @@ import os
 import shlex
 from tqdm import tqdm
 import subprocess
+import yaml
 from enum import Enum
+
+from .generate_configs import CONFIGS_TEMP_DIR, _set_dotted
 
 class RunType(Enum):
     DRY = 0 # Does not run at all
@@ -23,7 +26,7 @@ def run_job(
         download=True,
         wandb_upload=False,
         hide_slurm_id=False, # Allows one to run jobs on a slurm allocation with RunType.NORMAL without causing jobs to resume
-        experiments_dir="./experiments"
+        experiments_dir="."
     ):
     if download:
         download_cmd = ["python", "perform_downloads.py", "--method", config_path]
@@ -80,3 +83,52 @@ def run_job(
             check=True,
         )
         return
+
+
+def _read_run_info_value(experiment_dir, key, default=None):
+    """Read a single key out of a run's `run_info.yaml` (its mutated config
+    snapshot), falling back to `default` if the file or key is absent (e.g. a
+    run that predates `run_info.yaml`)."""
+    run_info_path = os.path.join(experiment_dir, "run_info.yaml")
+    if not os.path.isfile(run_info_path):
+        return default
+    with open(run_info_path, "r") as f:
+        data = yaml.safe_load(f) or {}
+    return data.get(key, default)
+
+
+def extend_job(experiment_dir, *args, additional_epochs, overrides=None, **kwargs):
+    """Continue a previous run for `additional_epochs` more epochs.
+
+    Loads `<experiment_dir>/input_config.yaml`, applies `overrides` (a
+    dotted-path -> value dict, for changing method/lr/diagnostics/etc. on the
+    continued run), and wires up `resume.from`/`resume.additional_epochs`
+    before delegating to `run_job`. All other args/kwargs pass straight
+    through to `run_job`, except `experiments_dir`, which defaults to the
+    parent run's own logged `experiments_dir` (from its `run_info.yaml`) so
+    the extended run lands in the same subdirectory unless overridden.
+    """
+    input_config_path = os.path.join(experiment_dir, "input_config.yaml")
+    with open(input_config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    for dotted, value in (overrides or {}).items():
+        _set_dotted(config, dotted, value)
+
+    resume = config.setdefault("resume", {})
+    resume["from"] = experiment_dir
+    resume["additional_epochs"] = additional_epochs
+
+    os.makedirs(CONFIGS_TEMP_DIR, exist_ok=True)
+    out_path = os.path.join(
+        CONFIGS_TEMP_DIR, f"resume_{os.path.basename(os.path.normpath(experiment_dir))}.yaml"
+    )
+    with open(out_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    kwargs.setdefault(
+        "experiments_dir",
+        _read_run_info_value(experiment_dir, "experiments_dir", default="."),
+    )
+
+    return run_job(out_path, *args, **kwargs)
