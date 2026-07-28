@@ -1,5 +1,6 @@
 import yaml
 import os
+import shutil
 # Set CUDA variable to ensure reproducibility. See https://docs.nvidia.com/cuda/cublas/#results-reproducibility
 os.environ.setdefault('CUBLAS_WORKSPACE_CONFIG', ':4096:8')
 import argparse
@@ -175,16 +176,12 @@ def main():
 
     # save config file (fresh: guarded write; extension: refresh the copied
     # snapshot with the updated epoch budget + lineage; restart: keep existing)
-    config_path = os.path.join(save_dir, 'config.yaml')
+    input_config_path = os.path.join(save_dir, 'input_config.yaml')
     if run_mode == 'extension':
         config.setdefault('resume', {})['from'] = run_info['parent_dir']
-    if run_mode != 'restart':
-        logger.info('=====> Saving config file')
-        if run_mode == 'fresh':
-            write_guard(config_path)
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
-        logger.info('=====> Config file saved')
+    if run_mode == 'fresh':
+        write_guard(input_config_path)
+        shutil.copy2(args.config, input_config_path)
 
 
     init_seeds(config['seed'])
@@ -224,6 +221,10 @@ def main():
 
     config['num_gpus'] = torch.cuda.device_count()
     logger.info(f'=====> Number of GPUs: {config["num_gpus"]}')
+
+    run.config.update(config, allow_val_change=True)
+
+    wandb.save(input_config_path, base_path=save_dir, policy='now')
 
     Method = getattr(methods, method)(config, logger)
     Method.run()
