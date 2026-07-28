@@ -1,5 +1,6 @@
 import yaml
 import os
+import shutil
 # Set CUDA variable to ensure reproducibility. See https://docs.nvidia.com/cuda/cublas/#results-reproducibility
 os.environ.setdefault('CUBLAS_WORKSPACE_CONFIG', ':4096:8')
 import argparse
@@ -9,7 +10,7 @@ import numpy as np
 import random
 import secrets
 from utils import custom_logger,random_str, get_date, re_nest_configs, get_configs
-from run_dir import setup_run_dir, write_guard, build_run_name
+from run_dir import setup_run_dir, write_guard, build_run_name, EXPERIMENTS_ROOT
 import wandb
 
 
@@ -124,8 +125,8 @@ def main():
                         help='Notes for the experiment.')
     parser.add_argument('--wandb_not_upload', action='store_true',
                         help='Do not upload the result to wandb.')
-    parser.add_argument('--experiments_dir', type=str, default='./experiments',
-                        help='Base directory under which run directories are created.')
+    parser.add_argument('--experiments_dir', type=str, default='.',
+                        help='Subdirectory of ./experiments under which run directories are created.')
 
     args = parser.parse_args()
 
@@ -144,12 +145,20 @@ def main():
 
     config.setdefault('training_opt', {})
     resume_from = config.get('resume', {}).get('from') or None
+    if os.path.isabs(args.experiments_dir):
+        raise ValueError(
+            "--experiments_dir must be a relative subdirectory name under "
+            f"'{EXPERIMENTS_ROOT}', not an absolute path: {args.experiments_dir!r}"
+        )
     run_dir, run_mode, run_info = setup_run_dir(
-        config['run_name'], experiments_root=args.experiments_dir, resume_from=resume_from)
+        config['run_name'],
+        experiments_root=os.path.join(EXPERIMENTS_ROOT, args.experiments_dir),
+        resume_from=resume_from)
 
     # method/save_dir
     save_dir = run_dir
     config['save_dir'] = save_dir
+    config['experiments_dir'] = args.experiments_dir
     method = config['method']
 
     if method not in methods.__all__:
@@ -175,16 +184,12 @@ def main():
 
     # save config file (fresh: guarded write; extension: refresh the copied
     # snapshot with the updated epoch budget + lineage; restart: keep existing)
-    config_path = os.path.join(save_dir, 'config.yaml')
+    input_config_path = os.path.join(save_dir, 'input_config.yaml')
     if run_mode == 'extension':
         config.setdefault('resume', {})['from'] = run_info['parent_dir']
-    if run_mode != 'restart':
-        logger.info('=====> Saving config file')
-        if run_mode == 'fresh':
-            write_guard(config_path)
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
-        logger.info('=====> Config file saved')
+    if run_mode == 'fresh':
+        write_guard(input_config_path)
+        shutil.copy2(args.config, input_config_path)
 
 
     init_seeds(config['seed'])
@@ -225,10 +230,24 @@ def main():
     config['num_gpus'] = torch.cuda.device_count()
     logger.info(f'=====> Number of GPUs: {config["num_gpus"]}')
 
+    run.config.update(config, allow_val_change=True)
+
+    wandb.save(input_config_path, base_path=save_dir, policy='now')
+
+    # run_info.yaml: the mutated counterpart to the pristine input_config.yaml,
+    # rewritten every invocation (fresh/extension/restart) to reflect current state.
+    run_info_path = os.path.join(save_dir, 'run_info.yaml')
+    with open(run_info_path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False)
+    wandb.save(run_info_path, base_path=save_dir, policy='now')
+
     Method = getattr(methods, method)(config, logger)
     Method.run()
 
     logger.info('========================= End Main =========================')
+
+    with open(os.path.join(save_dir, 'FINISHED'), 'w') as f:
+        pass
 
     logger.wandb_finish()
 

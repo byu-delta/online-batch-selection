@@ -36,7 +36,7 @@ Common flags:
 |------|---------|---------|
 | `--config <path>` | *(required)* | The merged config to run. |
 | `--wandb_not_upload` | off | Keep W&B logs local (offline) instead of uploading. |
-| `--experiments_dir <dir>` | `./experiments` | Base directory for run output directories. |
+| `--experiments_dir <dir>` | `.` | Subdirectory of `./experiments` under which run output directories are created (must be a relative path — runs always land under `./experiments`). |
 | `--log_file <name>` | auto | Override the logger filename. |
 
 > There is **no `--seed` flag** — the seed is a top-level key in the config (see
@@ -135,11 +135,14 @@ in and edit it rather than editing the example in place.
 name, e.g. `run_CIFAR3_RhoLoss_AdamW_lr-0.001_CrossEntropy`. Separators are
 configurable (`value_sep="_"`, `kv_sep="-"`).
 
-Each run gets a **self-contained directory** under `--experiments_dir`:
+Each run gets a **self-contained directory** under `./experiments/<experiments_dir>`:
 
 ```
-experiments/<timestamp>[_<n>]_<run_name>/
-  config.yaml            # exact config that ran
+experiments/<experiments_dir>/<timestamp>[_<n>]_<run_name>/
+  input_config.yaml      # exact, unmodified config that ran (written once, never touched again)
+  run_info.yaml           # input_config.yaml plus runtime-derived fields (save_dir, wandb_run_id,
+                          # num_gpus, experiments_dir, ...); rewritten every invocation, so it's a
+                          # superset of input_config.yaml that also reflects current state
   logs/                  # per-diagnostic logs + SLURM stdout/stderr links
   snapshots/             # checkpoint.pth.tar (rolling) + model_best.pth.tar
   wandb/                 # local W&B files
@@ -325,8 +328,27 @@ in the **same** run directory and resumes from its rolling checkpoint. SLURM
 stdout/stderr go to `logs/slurm/%j.{out,err}` and are symlinked into the run
 dir.
 
-To resume / extend a finished run, point a config's `resume.from` at an existing
-run directory (optionally with `resume.additional_epochs`).
+To resume / extend a finished or interrupted run, either point a config's
+`resume.from` at an existing run directory (optionally with
+`resume.additional_epochs`) and submit it as usual, or use
+`run_utils.extend_job`, which builds that config for you from the run's saved
+`input_config.yaml`:
+
+```python
+from run_utils import extend_job, RunType
+
+extend_job(
+    "experiments/20260728_114119_MNIST_DivBS_LeNet_0.1_1",
+    additional_epochs=20,
+    overrides={"training_opt.optim_params.lr": 1e-5},  # optional dotted-path tweaks
+    run_type=RunType.SBATCH,
+    preemptible=True,
+)
+```
+
+`extend_job` takes the experiment directory in place of `run_job`'s config
+path; everything else (`*args`/`**kwargs`) passes straight through to
+`run_job`.
 
 ---
 

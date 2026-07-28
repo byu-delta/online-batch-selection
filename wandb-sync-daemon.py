@@ -4,20 +4,45 @@ import argparse
 import glob
 import os
 
-def sync(save_dirs):
+EXPERIMENTS_ROOT = './experiments'
+
+def sync(subdirs):
     start = time.time()
 
-    dirs = open(save_dirs).read().splitlines() if save_dirs.endswith('.txt') else [save_dirs]
+    if subdirs:
+        roots = []
+        for subdir in subdirs:
+            roots.extend(glob.glob(os.path.join(EXPERIMENTS_ROOT, subdir)))
+    else:
+        roots = [EXPERIMENTS_ROOT]
 
-    wandb_dirs = []
-    for d in dirs:
-        for path in glob.glob(f"{d}/wandb/offline-run-*", recursive=True):
-            if "slurm_history" in path.split(os.sep):
+    run_dir_to_offline_dirs = {}
+    for root in roots:
+        for offline_run_dir in glob.glob(
+            os.path.join(root, '**', 'wandb', 'offline-run-*'), recursive=True
+        ):
+            run_dir = os.path.dirname(os.path.dirname(offline_run_dir))
+            if "slurm_history" in run_dir.split(os.sep):
                 continue
-            wandb_dirs.append(path)
+            run_dir_to_offline_dirs.setdefault(run_dir, []).append(offline_run_dir)
 
-    if wandb_dirs:
-        cmd = ["wandb", "sync", *wandb_dirs, "--no-include-synced"]
+    to_sync = []
+    finished_in_call = []
+    n_skipped = 0
+    for run_dir, offline_run_dirs in run_dir_to_offline_dirs.items():
+        finished = os.path.isfile(os.path.join(run_dir, 'FINISHED'))
+        synced = os.path.isfile(os.path.join(run_dir, 'SYNCED'))
+
+        if finished and synced:
+            n_skipped += 1
+            continue
+
+        to_sync.extend(offline_run_dirs)
+        if finished:
+            finished_in_call.append(run_dir)
+
+    if to_sync:
+        cmd = ["wandb", "sync", *to_sync]
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -26,15 +51,23 @@ def sync(save_dirs):
         ) as proc:
             for line in proc.stdout:
                 print(line, end="")
+        returncode = proc.returncode
+
+        if returncode == 0:
+            for run_dir in finished_in_call:
+                with open(os.path.join(run_dir, 'SYNCED'), 'w') as f:
+                    pass
     else:
         print("No data found to sync")
 
+    print(f"Skipped {n_skipped} finished+synced run dir(s)")
+
     return time.time() - start
 
-def sync_daemon(save_dirs, interval_sec=30):
+def sync_daemon(subdirs, interval_sec=30):
     while True:
         print(f"Syncing... ({interval_sec}s interval)")
-        elapsed = sync(save_dirs)
+        elapsed = sync(subdirs)
         print(f"Sync took {elapsed:.2f}s")
 
         sleep_time = max(0, interval_sec - elapsed)
@@ -54,7 +87,12 @@ def sync_daemon(save_dirs, interval_sec=30):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('save_dirs', type=str, nargs='?', default='./experiments/**')
+    parser.add_argument(
+        'subdirs', type=str, nargs='*',
+        help=f"Subdirectory name(s)/glob pattern(s) under {EXPERIMENTS_ROOT}/. "
+             "Each is recursively searched for run dirs to sync. "
+             "If omitted, recursively syncs all run dirs under it.",
+    )
     parser.add_argument('--interval', type=int, default=15)
     args = parser.parse_args()
-    sync_daemon(args.save_dirs, args.interval)
+    sync_daemon(args.subdirs, args.interval)
