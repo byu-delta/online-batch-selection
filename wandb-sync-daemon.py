@@ -59,7 +59,7 @@ def sync(subdirs):
                     pass
     else:
         abs_roots = [os.path.abspath(r) for r in roots]
-        print(f"No data found to sync (searched in {abs_roots})")
+        print(f"No data found to sync (searched in {abs_roots if len(abs_roots) > 0 else subdirs})")
 
     print(f"Skipped {n_skipped} finished+synced run dir(s)")
 
