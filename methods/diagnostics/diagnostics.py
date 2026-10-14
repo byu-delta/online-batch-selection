@@ -31,6 +31,9 @@ POST_BATCH_DIAGNOSTICS = {
     "PerSampleVolatilitySummary": PerSampleVolatilitySummary,
     "LogProbs": LogProbs
 }
+SELECTION_DIAGNOSTICS = {
+    "SelectionTrace": SelectionTrace,
+}
 EPOCH_END_DIAGNOSTICS = {
     "EpochSnapshot": EpochSnapshot,
     "SelectedPoints": SelectedPoints,

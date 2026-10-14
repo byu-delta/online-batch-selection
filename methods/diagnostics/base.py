@@ -29,6 +29,7 @@ class Phase(Enum):
     key so states at the same global step but different points (the weights
     change between them) don't collide."""
     POST_BATCH = "post_batch"
+    SELECTION = "selection"
     EPOCH_END = "epoch_end"
     TRAIN_END = "train_end"
 

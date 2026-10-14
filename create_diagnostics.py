@@ -7,15 +7,21 @@ import os
 
 from methods.diagnostics.base import DiagnosticsManager, Phase, TrainState
 from methods.diagnostics.standard import Checkpoint, _LossErrorLeaf
-from methods.diagnostics.diagnostics import EPOCH_END_DIAGNOSTICS, POST_BATCH_DIAGNOSTICS, TRAIN_END_DIAGNOSTICS
+from methods.diagnostics.diagnostics import (
+    EPOCH_END_DIAGNOSTICS,
+    POST_BATCH_DIAGNOSTICS,
+    SELECTION_DIAGNOSTICS,
+    TRAIN_END_DIAGNOSTICS,
+)
 from methods.diagnostics.schedule import LogSchedule
 
 
 class DiagnosticsRunner:
     """Thin facade over the per-phase managers for the training loop."""
 
-    def __init__(self, post_batch_manager, epoch_end_manager, train_end_manager, checkpoint):
+    def __init__(self, post_batch_manager, selection_manager, epoch_end_manager, train_end_manager, checkpoint):
         self.post_batch_manager = post_batch_manager
+        self.selection_manager = selection_manager
         self.epoch_end_manager = epoch_end_manager
         self.train_end_manager = train_end_manager
         self.checkpoint = checkpoint
@@ -27,6 +33,12 @@ class DiagnosticsRunner:
                            batch_idx=batch_idx, total_epochs=total_epochs, total_batches=total_batches)
         self.post_batch_manager.run_diagnostics(state)
 
+    def run_selection(self, total_steps, epoch, batch_idx, total_epochs, total_batches):
+        self._last_total_steps = total_steps
+        state = TrainState(total_steps=total_steps, phase=Phase.SELECTION, epoch=epoch,
+                           batch_idx=batch_idx, total_epochs=total_epochs, total_batches=total_batches)
+        self.selection_manager.run_diagnostics(state)
+
     def run_epoch_end(self, total_steps, epoch, total_epochs):
         self._last_total_steps = total_steps
         state = TrainState(total_steps=total_steps, phase=Phase.EPOCH_END, epoch=epoch,
@@ -34,7 +46,7 @@ class DiagnosticsRunner:
         self.epoch_end_manager.run_diagnostics(state)
 
     def finalize(self):
-        for manager in (self.post_batch_manager, self.epoch_end_manager):
+        for manager in (self.post_batch_manager, self.selection_manager, self.epoch_end_manager):
             for diagnostic in manager.diagnostics:
                 if hasattr(diagnostic, "finalize"):
                     diagnostic.finalize()
@@ -124,6 +136,7 @@ def create_diagnostics(method, *, project_root, **other_resources):
     logs_dir = os.path.join(config['save_dir'], "logs")
 
     post_batch_manager = DiagnosticsManager(method=method, project_root=project_root)
+    selection_manager = DiagnosticsManager(method=method, project_root=project_root)
     epoch_end_manager = DiagnosticsManager(method=method, project_root=project_root)
     train_end_manager = DiagnosticsManager(method=method, project_root=project_root)
     checkpoint = None
@@ -134,7 +147,11 @@ def create_diagnostics(method, *, project_root, **other_resources):
     for cls_name, log_name, params in _parse_diagnostics_list(requested):
         params.setdefault("log_path", os.path.join(logs_dir, f"{log_name}.log"))
 
-        if cls_name in POST_BATCH_DIAGNOSTICS:
+        if cls_name in SELECTION_DIAGNOSTICS:
+            cls = SELECTION_DIAGNOSTICS[cls_name]
+            diagnostic = cls(selection_manager, should_run=(lambda state: True), **params)
+            selection_manager.register(diagnostic)
+        elif cls_name in POST_BATCH_DIAGNOSTICS:
             cls = POST_BATCH_DIAGNOSTICS[cls_name]
             diagnostic = cls(post_batch_manager, should_run=default_schedule, **params)
             post_batch_manager.register(diagnostic)
@@ -161,4 +178,4 @@ def create_diagnostics(method, *, project_root, **other_resources):
                 )
             seen_log_keys[diagnostic.log_key] = log_name
 
-    return DiagnosticsRunner(post_batch_manager, epoch_end_manager, train_end_manager, checkpoint)
+    return DiagnosticsRunner(post_batch_manager, selection_manager, epoch_end_manager, train_end_manager, checkpoint)

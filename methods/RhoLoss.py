@@ -29,6 +29,13 @@ class RhoLoss(SelectionMethod):
     method_name = 'RhoLoss'
     def __init__(self, config, logger):
         super().__init__(config, logger)
+        self.selection_mode = config['method_opt'].get('selection_mode', 'eval')
+        valid_selection_modes = {'eval', 'train', 'batch_stats_no_update'}
+        if self.selection_mode not in valid_selection_modes:
+            raise ValueError(
+                f"Unknown RhoLoss selection_mode {self.selection_mode!r}; "
+                f"expected one of {sorted(valid_selection_modes)}."
+            )
         self.balance = config['method_opt']['balance']
         self.ratio = config['method_opt']['ratio']
         self.ratio_scheduler = config['method_opt']['ratio_scheduler'] if 'ratio_scheduler' in config['method_opt'] else 'constant'
@@ -118,36 +125,58 @@ class RhoLoss(SelectionMethod):
             raise NotImplementedError
 
     def reducible_loss_selection(self, inputs, targets, indexes, number_to_select, epoch):
-        """Select sub-batch with highest reducible loss.
-        Args:
-            inputs (torch.Tensor): Input data for the current batch.
-            targets (torch.Tensor): Corresponding target labels for the current batch.
-        Returns:
-            torch.Tensor: Indices of the selected samples.
-        """
-        # Set models to eval mode
-        self.model.eval()
+        """Select a sub-batch using the configured BatchNorm selection mode."""
+        was_training = self.model.training
+        saved_batchnorm_buffers = None
+        if self.selection_mode == 'eval':
+            self.model.eval()
+        else:
+            self.model.train()
+            if self.selection_mode == 'batch_stats_no_update':
+                saved_batchnorm_buffers = [
+                    (module, module.running_mean.detach().clone(),
+                     module.running_var.detach().clone(),
+                     module.num_batches_tracked.detach().clone())
+                    for module in self.model.modules()
+                    if isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
+                ]
 
-        # Get student loss from main model, irreducible loss from teacher model, and reducible loss by calculating the difference
-        with torch.no_grad():
-            total_loss = F.cross_entropy(self.model(inputs), targets, reduction='none')
-        irreducible_loss = self.train_dset.irreducible_loss_cache[indexes].to(total_loss.device)
-        reducible_loss = total_loss - irreducible_loss
+        try:
+            # Get student loss from the main model, irreducible loss from the
+            # teacher cache, and reducible loss by subtraction.
+            with torch.no_grad():
+                total_loss = F.cross_entropy(self.model(inputs), targets, reduction='none')
+            irreducible_loss = self.train_dset.irreducible_loss_cache[indexes].to(total_loss.device)
+            reducible_loss = total_loss - irreducible_loss
 
-        # Select samples with highest reducible loss
-        if self.use_scores_as_distribution:
-            weights = torch.softmax(self.softmax_lambda * reducible_loss, dim=0)
-            index_selected = torch.multinomial(weights, number_to_select)
-        else: # Normal RhoLoss
-            _, index_selected = torch.topk(reducible_loss, k=number_to_select, largest=True, sorted=False)
-        
-        # Override with uniform selection if specified
-        if epoch < self.uniform_epochs:
-            self.logger.info('Uniform selection')
-            index_selected = torch.randperm(len(inputs))[:number_to_select]
-        
-        # Return to train mode and return selected indices
-        self.model.train()
+            if self.use_scores_as_distribution:
+                weights = torch.softmax(self.softmax_lambda * reducible_loss, dim=0)
+                index_selected = torch.multinomial(weights, number_to_select)
+            else:
+                _, index_selected = torch.topk(
+                    reducible_loss, k=number_to_select, largest=True, sorted=False
+                )
+
+            if epoch < self.uniform_epochs:
+                self.logger.info('Uniform selection')
+                index_selected = torch.randperm(len(inputs), device=inputs.device)[:number_to_select]
+
+            selected_mask = np.zeros(len(inputs), dtype=np.uint8)
+            selected_mask[index_selected.detach().cpu().numpy()] = 1
+            self._last_selection_record = {
+                'candidate_indices': indexes.detach().cpu().numpy().astype(np.int64, copy=True),
+                'selected_mask': selected_mask,
+                'student_loss': total_loss.detach().cpu().numpy().astype(np.float32, copy=True),
+                'rho_score': reducible_loss.detach().cpu().numpy().astype(np.float32, copy=True),
+            }
+        finally:
+            if saved_batchnorm_buffers is not None:
+                for module, running_mean, running_var, num_batches_tracked in saved_batchnorm_buffers:
+                    module.running_mean.copy_(running_mean)
+                    module.running_var.copy_(running_var)
+                    module.num_batches_tracked.copy_(num_batches_tracked)
+            self.model.train(was_training)
+
         return index_selected.cpu().numpy(), reducible_loss.detach().cpu()
 
     def before_batch(self, i, inputs, targets, indexes):
