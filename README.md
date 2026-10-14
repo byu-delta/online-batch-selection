@@ -209,10 +209,12 @@ would silently drop duplicate keys).
 and, for each entry:
 
 1. Looks up the class name in one of three registries
-   (`methods/diagnostics/diagnostics.py`): `POST_BATCH_DIAGNOSTICS`,
+   (`methods/diagnostics/diagnostics.py`): `SELECTION_DIAGNOSTICS`, `POST_BATCH_DIAGNOSTICS`,
    `EPOCH_END_DIAGNOSTICS`, or `TRAIN_END_DIAGNOSTICS` — an unknown name
    raises. Each registry feeds a separate `DiagnosticsManager`, one per
    training phase:
+   - **`SELECTION`** — driven after candidate selection and before the selected
+     minibatch is trained; selection diagnostics run for every metabatch.
    - **`POST_BATCH`** — driven after every training batch
      (`SelectionMethod.after_batch` → `_run_post_batch_diagnostics`), subject
      to a shared logging schedule (below).
@@ -281,6 +283,8 @@ epoch-end always fires at epoch end, train-end fires once at the very end.
   noisy data)
 - **`TrainProgress`, `ValProgress`** (post batch) — geodesic progress of
   predictions toward the labels
+- **`SelectionTrace`** (selection phase) — saves exact selection-time values
+  for every candidate point in `selection_trace.npz`
 - **`LogitNormL2`, `ParamNorms`, `GradNorms`, `WeightMatrixNorms`** (post batch)
 - **`LinearProbe`, `NTK`** (post batch; heavier, take `params`)
 - **`Checkpoint`** (post batch) — rolling + best checkpoint (needed to resume

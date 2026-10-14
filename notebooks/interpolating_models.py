@@ -1,7 +1,8 @@
 import sys
 from pathlib import Path
 # sys.path.append(str(Path.cwd().parent))
-sys.path.insert(0, str(Path.cwd()))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import torch
 from torch import nn
@@ -18,12 +19,25 @@ import models
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--epoch", type=int)
-parser.add_argument("--thr1", type=float)
-parser.add_argument("--thr2", type=float)
-parser.add_argument("--model1", type=str)
-parser.add_argument("--model2", type=str)
+parser.add_argument("--thr1", type=float, default=None)
+parser.add_argument("--thr2", type=float, default=None)
+parser.add_argument("--model1", type=str, required=True)
+parser.add_argument("--model2", type=str, required=True)
+parser.add_argument("--epoch1", type=int, required=True)
+parser.add_argument("--epoch2", type=int, required=True)
 parser.add_argument("--num_points", type=int, default=25)
+parser.add_argument("--progress", type=float)
+parser.add_argument("--progress_diff", type=float)
+parser.add_argument("--method", choices=["DivBS_RhoLoss", "RhoLoss_DivBS"], default="DivBS_RhoLoss")
+parser.add_argument(
+    "--output-dir",
+    type=Path,
+    default=ROOT / "interpolation/cifar10interpolation_10-07-26/data",
+)
+parser.add_argument("--output-name", type=str, default=None)
+parser.add_argument("--dataset-root", type=Path, default=ROOT / "_CIFAR")
+parser.add_argument("--batch-size", type=int, default=2048)
+parser.add_argument("--device", type=str, default="cuda")
 
 args = parser.parse_args()
 
@@ -40,20 +54,30 @@ args = parser.parse_args()
 model1_path = args.model1
 model2_path = args.model2
 
-epoch = args.epoch
+epoch1 = args.epoch1
+epoch2 = args.epoch2
+progress = args.progress
 thr1 = args.thr1
 thr2 = args.thr2
 num_points = args.num_points
 
-chart_title = f"DivBS-RhoLoss Interpolation between Thr: {thr1} and Thr: {thr2} at Epoch: {epoch}"
-data_name = f"Train_DivBS-RhoLos_thr-{thr1}-{thr2}_epoch-{epoch}"
+method_label = "RhoLoss-DivBS" if args.method == "RhoLoss_DivBS" else "DivBS-RhoLos"
+progress_label = "unknown" if progress is None else str(progress)
+chart_title = f"{args.method} interpolation: threshold {thr1}, epoch {epoch1} to threshold {thr2}, epoch {epoch2}"
+data_name = args.output_name or (
+    f"Train_{method_label}_thr-{thr1}-{thr2}"
+    f"_progress-{progress_label}_step-{epoch1 * 157}-{epoch2 * 157}"
+)
+print(f"Mean progress: {progress}; absolute progress difference: {args.progress_diff}", flush=True)
 
 
 def get_model(model_path):
     snapshot = torch.load(model_path, map_location="cpu", weights_only=False)
     state_dict = snapshot['state_dict']
 
-    model = models.ResNet(m_type='resnet18', num_classes=10)
+    # These checkpoints were trained with BatchNorm disabled. Keep this
+    # explicit so the loader cannot construct the wrong architecture.
+    model = models.ResNet(m_type='resnet18', num_classes=10, BatchNorm=False)
     model.load_state_dict(state_dict)
     return model
 
@@ -74,6 +98,8 @@ def interpolate_models(model1, model2):
             for p, p1, p2 in zip(params, params1, params2):
                 p.copy_(t * p1 + (1 - t) * p2)
 
+            # These runs have no BatchNorm buffers. Keep buffer interpolation
+            # disabled; enabling it would change this experiment's model.
             # for b, b1, b2 in zip(buffers, buffers1, buffers2):
             #     if b.dtype.is_floating_point:
             #         b.copy_(t * b1 + (1 - t) * b2)
@@ -85,7 +111,7 @@ def interpolate_models(model1, model2):
 def plot_data(model1, model2, data_loader, loss_func, device, chart_title, data_name, num_points):
     print("Starting Interpolation", flush=True)
 
-    with torch.inference_mode():
+    with torch.no_grad():
         model_func = interpolate_models(model1, model2)
 
         print("Interpolating Models Function Created", flush=True)
@@ -95,28 +121,32 @@ def plot_data(model1, model2, data_loader, loss_func, device, chart_title, data_
             print(f"Interpolating Model {t}", flush=True)
             model = model_func(t)
             model.train()
-            loss = 0
+            loss_sum = 0.0
+            num_samples = 0
             for images, targets in data_loader:
                 images = images.to(device)
                 targets = targets.to(device)
                 outputs = model(images)
-                loss += loss_func(outputs, targets).item()
-            losses.append(loss / len(data_loader))
+                loss_sum += loss_func(outputs, targets).item()
+                num_samples += targets.size(0)
+            losses.append(loss_sum / num_samples)
 
         print("Saving Data", flush=True)
-        np.save(f"./interpolation/data/{data_name}.npy", np.array(losses))
+        output_dir = args.output_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        np.save(output_dir / f"{data_name}.npy", np.array(losses))
 
-        print("Generating Plot", flush=True)
-        plt.plot(inputs, losses)
-        plt.xlabel('t')
-        plt.ylabel('Loss')
-        plt.title(chart_title)
-        plt.savefig(f"./interpolation/plots/{data_name}.png")
-        print("Plot Saved", flush=True)
+        # print("Generating Plot", flush=True)
+        # plt.plot(inputs, losses)
+        # plt.xlabel('t')
+        # plt.ylabel('Loss')
+        # plt.title(chart_title)
+        # plt.savefig(f"./interpolation/plots/{data_name}.png")
+        # print("Plot Saved", flush=True)
 
 print("Starting", flush=True)
 
-device = torch.device("cuda")
+device = torch.device(args.device)
 
 print("Loading Model 1", flush=True)
 model1 = get_model(model1_path).to(device)
@@ -138,9 +168,9 @@ transform =  transforms.Compose([transforms.ToTensor(), transforms.Normalize(mea
         )
 
 print("Loading Dataset", flush=True)
-dataset = datasets.CIFAR10('./_CIFAR', train=True, download=False, transform=transform)
+dataset = datasets.CIFAR10(str(args.dataset_root), train=True, download=False, transform=transform)
 print("Creating DataLoader", flush=True)
-data_loader = DataLoader(dataset, batch_size=2048, shuffle=False)
+data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
 print("DataLoader Created", flush=True)
 
-plot_data(model1, model2, data_loader, nn.CrossEntropyLoss(), device, chart_title, data_name, num_points)
+plot_data(model1, model2, data_loader, nn.CrossEntropyLoss(reduction="sum"), device, chart_title, data_name, num_points)

@@ -17,21 +17,23 @@ from .initialization import initialize_weights
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, BatchNorm=True):
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(
-            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
+            in_planes, planes, kernel_size=3, stride=stride, padding=1,
+            bias=not BatchNorm)
+        self.bn1 = nn.BatchNorm2d(planes) if BatchNorm else nn.Identity()
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
+                               stride=1, padding=1, bias=not BatchNorm)
+        self.bn2 = nn.BatchNorm2d(planes) if BatchNorm else nn.Identity()
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion*planes,
-                          kernel_size=1, stride=stride, bias=False),
+                          kernel_size=1, stride=stride, bias=not BatchNorm),
                 nn.BatchNorm2d(self.expansion*planes)
+                if BatchNorm else nn.Identity()
             )
 
     def forward(self, x):
@@ -45,23 +47,26 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, BatchNorm=True):
         super(Bottleneck, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1,
+                               bias=not BatchNorm)
+        self.bn1 = nn.BatchNorm2d(planes) if BatchNorm else nn.Identity()
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
-                               stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
+                               stride=stride, padding=1, bias=not BatchNorm)
+        self.bn2 = nn.BatchNorm2d(planes) if BatchNorm else nn.Identity()
         self.conv3 = nn.Conv2d(planes, self.expansion *
-                               planes, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(self.expansion*planes)
+                               planes, kernel_size=1, bias=not BatchNorm)
+        self.bn3 = (nn.BatchNorm2d(self.expansion*planes)
+                    if BatchNorm else nn.Identity())
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion*planes,
-                          kernel_size=1, stride=stride, bias=False),
+                          kernel_size=1, stride=stride, bias=not BatchNorm),
                 nn.BatchNorm2d(self.expansion*planes)
+                if BatchNorm else nn.Identity()
             )
 
     def forward(self, x):
@@ -74,17 +79,23 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, in_channels=3, init_weights_func="ResNet_kaiming_normal", **kwargs):
+    def __init__(self, block, num_blocks, num_classes=10, in_channels=3,
+                 init_weights_func="ResNet_kaiming_normal", BatchNorm=True,
+                 **kwargs):
         super(ResNet, self).__init__()
         self.in_planes = 64
 
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+                               stride=1, padding=1, bias=not BatchNorm)
+        self.bn1 = nn.BatchNorm2d(64) if BatchNorm else nn.Identity()
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1,
+                                       BatchNorm=BatchNorm)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2,
+                                       BatchNorm=BatchNorm)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2,
+                                       BatchNorm=BatchNorm)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2,
+                                       BatchNorm=BatchNorm)
         self.fc = nn.Linear(512*block.expansion, num_classes)
 
         # Initialize weights using the specified initialization function. If none is provided, use ResNet_kaiming_normal.
@@ -92,11 +103,11 @@ class ResNet(nn.Module):
 
         
 
-    def _make_layer(self, block, planes, num_blocks, stride):
+    def _make_layer(self, block, planes, num_blocks, stride, BatchNorm=True):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for stride in strides:
-            layers.append(block(self.in_planes, planes, stride))
+            layers.append(block(self.in_planes, planes, stride, BatchNorm=BatchNorm))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -152,18 +163,19 @@ def ResNet152(num_classes, in_channels=3, **kwargs):
     return ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, in_channels=in_channels, **kwargs)
 
 
-def create_model(m_type='resnet101',num_classes=1000, in_channels=3, pretrained = False, **kwargs):
+def create_model(m_type='resnet101', num_classes=1000, in_channels=3,
+                 pretrained=False, BatchNorm=True, **kwargs):
     if not pretrained:
         if m_type == 'resnet18':
-            model = ResNet18(num_classes, in_channels, **kwargs)
+            model = ResNet18(num_classes, in_channels, BatchNorm=BatchNorm, **kwargs)
         elif m_type == 'resnet34':
-            model = ResNet34(num_classes, in_channels, **kwargs)
+            model = ResNet34(num_classes, in_channels, BatchNorm=BatchNorm, **kwargs)
         elif m_type == 'resnet50':
-            model = ResNet50(num_classes, in_channels, **kwargs)
+            model = ResNet50(num_classes, in_channels, BatchNorm=BatchNorm, **kwargs)
         elif m_type == 'resnet101':
-            model = ResNet101(num_classes, in_channels, **kwargs)
+            model = ResNet101(num_classes, in_channels, BatchNorm=BatchNorm, **kwargs)
         elif m_type == 'resnet152':
-            model = ResNet152(num_classes, in_channels, **kwargs)
+            model = ResNet152(num_classes, in_channels, BatchNorm=BatchNorm, **kwargs)
         else:
             raise ValueError('Wrong Model Type')
     else:

@@ -339,6 +339,80 @@ class SelectedPoints(Diagnostic):
         return isinstance(other, SelectedPoints)
 
 
+class SelectionTrace(Diagnostic):
+    """Save exact RhoLoss selection values in standard dataset-index order."""
+
+    def __init__(self, manager, should_run=None, **params):
+        super().__init__(manager, log_path=params.get("log_path"), should_run=should_run)
+        self.num_train_samples = int(self.method.num_train_samples)
+        self.num_epochs = int(self.method.epochs)
+        self._records_by_epoch = [[] for _ in range(self.num_epochs)]
+        self.output_path = os.path.join(self.method.config["save_dir"], "selection_trace.npz")
+
+    def _run(self):
+        record = self.method._last_selection_record
+        if record is None:
+            raise RuntimeError(
+                "SelectionTrace requires the selection method to provide a selection record."
+            )
+
+        state = self.get_state()
+        epoch_idx = state.epoch - 1
+        if not 0 <= epoch_idx < self.num_epochs:
+            raise ValueError(f"SelectionTrace received invalid epoch {state.epoch}.")
+
+        candidate_indices = np.asarray(record["candidate_indices"], dtype=np.int64)
+        selected_mask = np.asarray(record["selected_mask"], dtype=np.float32)
+        student_loss = np.asarray(record["student_loss"], dtype=np.float32)
+        rho_score = np.asarray(record["rho_score"], dtype=np.float32)
+        size = candidate_indices.size
+        if not (selected_mask.size == student_loss.size == rho_score.size == size):
+            raise ValueError("SelectionTrace record arrays must have equal lengths.")
+
+        rows = np.column_stack((
+            candidate_indices.astype(np.float32),
+            np.full(size, state.total_steps, dtype=np.float32),
+            selected_mask,
+            student_loss,
+            rho_score,
+        ))
+        self._records_by_epoch[epoch_idx].append(rows)
+        return DiagnosticInfo("selection_trace", {}, log_type=LogType.FILEONLY)
+
+    def log(self):
+        # This diagnostic writes one artifact at train end, not per-step logs.
+        return
+
+    def finalize(self):
+        epoch_traces = []
+        expected_indices = np.arange(self.num_train_samples, dtype=np.int64)
+        for epoch_idx, records in enumerate(self._records_by_epoch, start=1):
+            if not records:
+                raise RuntimeError(f"SelectionTrace has no records for epoch {epoch_idx}.")
+            rows = np.concatenate(records, axis=0)
+            order = np.argsort(rows[:, 0], kind="stable")
+            rows = rows[order]
+            actual_indices = rows[:, 0].astype(np.int64)
+            if actual_indices.size != self.num_train_samples or not np.array_equal(actual_indices, expected_indices):
+                raise ValueError(
+                    f"SelectionTrace epoch {epoch_idx} does not contain each dataset index exactly once."
+                )
+            epoch_traces.append(rows[:, 1:])
+
+        trace = np.stack(epoch_traces, axis=0).astype(np.float32, copy=False)
+        np.savez(
+            self.output_path,
+            trace=trace,
+            selection_mode=np.asarray(self.method.selection_mode),
+            num_train_samples=np.asarray(self.num_train_samples, dtype=np.int64),
+            metabatch_size=np.asarray(self.method.batch_size, dtype=np.int64),
+            minibatch_size=np.asarray(max(1, int(self.method.batch_size * self.method.ratio)), dtype=np.int64),
+        )
+
+    def __eq__(self, other):
+        return isinstance(other, SelectionTrace)
+
+
 class SelectedPointsSummary(Diagnostic):
     """Epoch-end noisy-selection statistics. Reads the epoch's selected-point
     mask from `method._epoch_selected_mask` and the noisy indices / train size

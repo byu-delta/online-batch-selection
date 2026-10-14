@@ -195,6 +195,7 @@ class SelectionMethod(object):
         self.time_this_epoch = float(getattr(self, 'time_this_epoch', 0.0))
         self.total_step = int(getattr(self, 'total_step', 0))
         self._last_minibatch_scores = None
+        self._last_selection_record = None
         self._current_checkpoint_state = None
         self.save_checkpoint(self._build_checkpoint_state(), False, filename='initial_model.pth.tar')
 
@@ -271,10 +272,18 @@ class SelectionMethod(object):
             metabatch_inputs = datas["input"].cuda()
             metabatch_targets = datas["target"].cuda()
             metabatch_indexes = datas["index"]
+            self._last_selection_record = None
             minibatch = self.before_batch(
                 i, metabatch_inputs, metabatch_targets, metabatch_indexes
             )
             self._last_minibatch_scores = minibatch.scores
+            self.diagnostics.run_selection(
+                total_steps=self.total_step,
+                epoch=self._current_epoch,
+                batch_idx=i,
+                total_epochs=self.epochs,
+                total_batches=len(self.train_loader),
+            )
             selected_outputs, features = (
                 self.model(
                     x=minibatch.inputs,
